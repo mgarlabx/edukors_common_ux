@@ -40,7 +40,7 @@
     undo: () => typing() && !document.activeElement.isContentEditable ? document.execCommand('undo') : usable(button('undo')) && button('undo').click(),
     redo: () => typing() && !document.activeElement.isContentEditable ? document.execCommand('redo') : usable(button('redo')) && button('redo').click(),
     delete: () => typing() ? document.execCommand('delete') : usable(button('delete')) && button('delete').click(),
-    selectAll: () => typing() ? document.execCommand('selectAll') : EdukorsSampleDocument.selectAll()
+    selectAll: () => typing() ? document.execCommand('selectAll') : globalThis.EdukorsAppDocument?.selectAll?.()
   };
   menu.onCommand(name => commands[name]?.());
 

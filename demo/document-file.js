@@ -62,3 +62,23 @@ globalThis.EdukorsDocumentFile = (() => {
 
   return Object.freeze({ APP, MAIN, FORMAT, VERSION, toBytes, fromBytes });
 })();
+
+// The demo's side of the shell's file commands (src/shell/files.js, src/shell/desktop-menu.js): how a document becomes
+// bytes and back, how other formats are imported (demo/importers.js), how the page is exported, and Select All.
+globalThis.EdukorsAppDocument = Object.freeze({
+  toBytes: (doc, options) => EdukorsDocumentFile.toBytes(doc, options),
+  fromBytes: bytes => EdukorsDocumentFile.fromBytes(bytes),
+  adopt(doc, content) {
+    EdukorsSampleDocument.adopt(doc, content.parsed, content.images);
+    EdukorsAiAssistant.restoreConversations(doc, content.conversations || []);
+  },
+  exportPage: options => EdukorsSampleDocument.exportPage(options),
+  // An importer's result is checked like a file being opened (parseState) before it reaches the page.
+  async importFile({ format, name, extension, bytes, t }) {
+    const convert = EdukorsImporters[format];
+    if (typeof convert !== 'function') throw new Error(t('importUnknown'));
+    const raw = await convert({ name, extension, bytes, t });
+    return { parsed: EdukorsSampleDocument.parseState(raw, raw.images), images: raw.images };
+  },
+  selectAll: () => EdukorsSampleDocument.selectAll()
+});

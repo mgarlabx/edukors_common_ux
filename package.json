@@ -33,5 +33,9 @@
     "electron": "44.10.0",
     "electron-builder": "26.17.0"
   },
-  "main": "desktop/main.mjs"
+  "main": "desktop/main.mjs",
+  "files": [
+    "src/",
+    "desktop/"
+  ]
 }

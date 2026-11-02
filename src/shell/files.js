@@ -1,13 +1,17 @@
-// Save, Export, Show in folder, and closing with unsaved changes, for the visual prototype.
+// Save, Open, Recent, Import, Export, Show in folder, and closing with unsaved changes.
 // The screens come from src/files/file-dialogs.js. In the desktop app (EdukorsDesktop.files, provided by the Electron
-// preload) the work is real: documents are written and read as Edukors packages (document-file.js), Export renders the
-// page, and Show in folder opens the system's file manager. In a browser the "host" below only simulates the work, in
+// preload) the work is real: the app turns its documents into bytes and back through EdukorsAppDocument (its own
+// script; see docs/common-shell.md, "App integration"), Export renders the page, and Show in folder opens the system's
+// file manager. In a browser the "host" below only simulates the work, in
 // memory: no file is written, no folder is opened.
 // To see the other states in the simulation, save the document with the name "existing" (Save asks to replace) or
 // "error" (Save fails; a document saved as "error" also fails to export, to show that screen).
 (() => {
   const Dialogs = EdukorsFileDialogs;
   const config = () => EdukorsAppConfig.file || {};
+  // The app's document: { toBytes, fromBytes, adopt, exportPage?, importFile?, selectAll? }. Read when used, because
+  // the app's scripts load after this one.
+  const app = () => globalThis.EdukorsAppDocument;
   const messages = () => (EdukorsLanguages[document.documentElement.lang] || EdukorsLanguages.en).messages;
   const t = key => messages()[key] || EdukorsLanguages.en.messages[key];
   const extension = () => config().extension || '.ecmx';
@@ -27,7 +31,7 @@
   const desktopHost = {
     async save(doc, { name, folder, replace }) {
       const base = withoutExtension(name, extension());
-      const { bytes, committed } = await EdukorsDocumentFile.toBytes(doc, { name: base });
+      const { bytes, committed } = await app().toBytes(doc, { name: base });
       const result = await desktop.save({ folder, name: base, extension: extension(), bytes, replace });
       if (result.exists) return { exists: true };
       if (result.error) return { error: result.error };
@@ -39,7 +43,7 @@
     },
     async export(doc, { name, folder, format, progress }) {
       progress(10);
-      const { html, width, height } = await EdukorsSampleDocument.exportPage({ title: name });
+      const { html, width, height } = await app().exportPage({ title: name });
       progress(40);
       const result = await desktop.export({ folder, name, format, html, width, height });
       if (result.error) return { error: result.error };
@@ -131,21 +135,20 @@
     const open = EdukorsDocuments.list().find(doc => doc.path === path);
     if (open) { EdukorsDocuments.activate(open.id); return; }
     let content;
-    try { content = await EdukorsDocumentFile.fromBytes(bytes); }
+    try { content = await app().fromBytes(bytes); }
     catch (error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: fileName, reason: error.message }) }); return; }
     const doc = EdukorsDocuments.add({ saved: true, name, folder, file: fileName, path });
-    EdukorsSampleDocument.adopt(doc, content.parsed, content.images);
-    EdukorsAiAssistant.restoreConversations(doc, content.conversations);
+    app().adopt(doc, content);
     EdukorsDocuments.activate(doc.id);
   }
 
   // ----- Import -----
   // Another format becomes a new, unsaved document named after the file. The formats come from
-  // EdukorsAppConfig.file.importFormats and the converters from the app (EdukorsImporters, demo/importers.js); the
-  // converted content goes through parseState like a file being opened. The desktop host shows the system's dialog
-  // and reads the file; in a browser a file input does the same, so Import works in the preview too.
+  // EdukorsAppConfig.file.importFormats and the conversion from the app (EdukorsAppDocument.importFile), which must
+  // check the result as strictly as a file being opened. The desktop host shows the system's dialog and reads the file;
+  // in a browser a file input does the same, so Import works in the preview too.
   const capitalized = id => `${id[0].toUpperCase()}${id.slice(1)}`;
-  const importFormats = () => (config().importFormats || []).filter(format => typeof EdukorsImporters?.[format.id] === 'function');
+  const importFormats = () => config().importFormats || [];
 
   function pickInBrowser(formats) {
     return new Promise(resolve => {
@@ -178,10 +181,9 @@
     const format = formats.find(item => item.extensions.includes(file.extension));
     try {
       if (!format) throw new Error(t('importUnknown'));
-      const raw = await EdukorsImporters[format.id]({ name: file.name, extension: file.extension, bytes: file.bytes, t });
-      const parsed = EdukorsSampleDocument.parseState(raw, raw.images);
+      const content = await app().importFile({ format: format.id, name: file.name, extension: file.extension, bytes: file.bytes, t });
       const doc = EdukorsDocuments.add({ name: file.name });
-      EdukorsSampleDocument.adopt(doc, parsed, raw.images);
+      app().adopt(doc, content);
       EdukorsDocuments.activate(doc.id);
     } catch (error) {
       Dialogs.toast({ t, message: fileMessage('importFailed', { name: file.file, reason: error.message }) });
@@ -239,6 +241,8 @@
   const button = key => document.querySelector(`[data-command="${key}"]`);
   button('save').addEventListener('click', () => save());
   button('export').addEventListener('click', exportDocument);
+  // An app without export formats has no Export button (it stays hidden even with a document open).
+  if (!(config().exportFormats ?? ['html']).length) { button('export').classList.remove('document-action'); button('export').hidden = true; }
   button('reveal').addEventListener('click', () => reveal());
   button('import').removeAttribute('aria-description');
   button('import').hidden = !importFormats().length;

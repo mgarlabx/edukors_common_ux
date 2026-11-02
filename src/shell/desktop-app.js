@@ -16,7 +16,8 @@
   async function askTerms() {
     const version = EdukorsAppConfig.termsVersion, texts = EdukorsAppConfig.help?.termsOfUse;
     if (!version || !texts) return;
-    if ((await host.terms()).accepted === version) return;
+    const terms = await host.terms();
+    if (terms.skip || terms.accepted === version) return;
     const lang = document.documentElement.lang;
     const dialog = document.createElement('dialog');
     dialog.className = 'file-dialog wide terms-dialog';

@@ -81,7 +81,7 @@ Font size and line width are combo boxes: type a value (Enter or leaving the fie
 
 ## Save, Open, Export, and Show in folder
 
-These screens define how the commands look and behave. In the desktop app (`npm run desktop`) the work is real: Save and Open write and read the document as an Edukors package (`.ecmx`, see [The Common demo's document file](docs/common-document-format.md)), Choose opens the system's folder picker, Export writes the web page, PDF, or PNG next to the document, Show in folder opens the system's file manager, and closing the window with unsaved changes asks first. In a browser the work is simulated in memory (`demo/files.js`), and nothing is written to disk. The screens are shared in `src/files/file-dialogs.js` (`save`, `exportAs`, `confirmClose`, `toast`); the host supplies a `commit` function and, later, the real folder picker. Choose in the Save screen is a disabled placeholder for that picker (Export has no folder choice).
+These screens define how the commands look and behave. In the desktop app (`npm run desktop`) the work is real: Save and Open write and read the document as an Edukors package (`.ecmx`, see [The Common demo's document file](docs/common-document-format.md)), Choose opens the system's folder picker, Export writes the web page, PDF, or PNG next to the document, Show in folder opens the system's file manager, and closing the window with unsaved changes asks first. In a browser the work is simulated in memory (`src/shell/files.js`), and nothing is written to disk. The screens are shared in `src/files/file-dialogs.js` (`save`, `exportAs`, `confirmClose`, `toast`); the host supplies a `commit` function and, later, the real folder picker. Choose in the Save screen is a disabled placeholder for that picker (Export has no folder choice).
 
 - **Save** (toolbar, Cmd/Ctrl+S): the first save opens a screen with the name (and the app's extension, `.ecmx` here), the folder, a hint, Cancel, and Save. Later saves ask nothing and show a notice. Cmd/Ctrl+Shift+S opens the same screen as Save as. Names are checked for characters and reserved names the systems do not allow; an existing file asks "Replace it?" (Replace or Choose another name); a failure keeps the screen open and says why. After saving, the tab takes the file name, the status bar reads Saved, the tab's dot goes away, and Export and Show in folder become available.
 - **Export**: a list of the formats the app offers, in the order of `EdukorsAppConfig.file.exportFormats` (the demo uses web page, PDF, and PNG as placeholders). The first one, web page (HTML), is always preselected, even after another format was used before. The screen has no name or folder fields: an export always goes next to the original file, with the same name and the format's extension. There is a progress bar while it works, and exporting again overwrites the previous export without asking. A failure keeps the screen open and says why. It stays disabled until the document is saved once.
@@ -172,6 +172,10 @@ The demo document (`demo/sample-document.js`) is a small canvas fixture for test
 - **Document sheet:** the sheet stays white in the dark theme, because document content does not follow the interface theme.
 
 Each app enables only what it supports through `EdukorsAppConfig.canvas` (`move`, `resize`, `arrange`, `contextMenu`, `multiSelect`, `insert`) and `EdukorsAppConfig.contextualToolbar` (selection kinds → format groups; with mixed kinds only the groups shared by all show). The toolbar, the context menu, and the shortcuts follow it.
+
+## Building an app on Common
+
+Apps load the shared shell through one script (`src/shell/boot.js`), describe their document through `EdukorsAppDocument`, and start the shared Electron host with `startDesktopApp` (`desktop/host.mjs`). See [App integration](docs/common-shell.md#app-integration). The demo in `demo/` is built the same way.
 
 ## Continuing work
 

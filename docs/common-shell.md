@@ -106,3 +106,39 @@ Confirmed direction for future app integration:
 - The current 99-icon collection is a reference catalog imported from Graph and Slides. Its final division into shared and app-specific assets is still pending.
 
 Implementation status: the common translation registry and icon catalog exist. Dictionary composition, namespaced translation lookup, per-key English fallback, and app-specific icon registration are not implemented yet. These are requirements for the future integration layer, not claims about current behavior.
+
+## App integration
+
+Decided 2026-11-02, with the Text Editor as the first app built on Common. An app installs Common from GitHub (`"edukors-common-ux": "git+https://github.com/mgarlabx/edukors_common_ux.git#main"`, with `allow-git=root` in its `.npmrc`; see the README) and gets only `src/` and `desktop/` (`files` in Common's `package.json`). It supplies four things:
+
+1. **Its page** (`index.html`): its configuration, then the shell's entry point with the app's own scripts:
+
+   ```html
+   <script src="app-config.js"></script>
+   <script src="node_modules/edukors-common-ux/src/shell/boot.js" data-app="document.js assistant.js"></script>
+   ```
+
+   `src/shell/boot.js` adds the stylesheet and the markup (title bar, toolbar, tabs, panels, status bar, Settings, Help) and loads, in order: Common's libraries, the shell (`src/shell/*.js`), the AI screens, the app's scripts, and the shell scripts that need the app (`desktop-menu.js`, `desktop-app.js`). When Common adds or reorders a file, apps do not change.
+2. **Its configuration** (`EdukorsAppConfig`): `name`, `version` (`v.YY.MM.DD`), `termsVersion`, `help` (Markdown by language), `file` (`extension`, `exportFormats`, `importFormats`), and, for a canvas, `canvas` and `contextualToolbar`. Without `canvas` the Insert group is left out; without `exportFormats` Export is hidden.
+3. **Its document** (`EdukorsAppDocument`, defined by one of its scripts):
+
+   | Member | Used by | Does |
+   | --- | --- | --- |
+   | `toBytes(doc, { name })` → `{ bytes }` | Save | the document as a package (`EdukorsPackage.write`) |
+   | `fromBytes(bytes)` → content | Open, Recent | reads and checks a file; throws an Error with a message for the person |
+   | `adopt(doc, content)` | Open, Recent, Import | puts content into a new document tab (and its AI conversations) |
+   | `exportPage({ title })` → `{ html, width, height }` | Export (optional) | the page as one self-contained HTML document |
+   | `importFile({ format, name, extension, bytes, t })` → content | Import (optional) | converts another format, checked as strictly as a file |
+   | `selectAll()` | Select All (optional) | selects everything in the document |
+
+   Edit commands start unavailable; the app's editor enables them (`aria-disabled` on `#edit-actions .tool`) and handles their clicks.
+4. **Its main process** (`desktop/main.mjs`):
+
+   ```js
+   import { startDesktopApp } from "edukors-common-ux/desktop/host.mjs";
+   startDesktopApp({ appId: "text", name: "Edukors Text Editor", root: <the app folder>, documentExtensions: [".etex"], exportFormats: [] });
+   ```
+
+   `desktop/host.mjs` runs everything the apps share: AI, files, Recent, import and export (only the extensions the app lists), the macOS menu, the title bar, terms, and update checks (the app's `package.json`: `"edukors": { "updates": "owner/repo" }`). Unpackaged runs accept `--shared`, `--data-dir <dir>`, and `--verbose`; `EDUKORS_ACCEPT_TERMS=1` skips the terms in automated tests of an unpackaged app.
+
+The Common demo is built the same way (`demo/index.html`, `demo/app-config.js`, `demo/document-file.js` with its `EdukorsAppDocument`, `desktop/main.mjs`).

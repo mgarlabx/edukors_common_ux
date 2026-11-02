@@ -35,7 +35,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 /* Decorative macOS-style controls; to be adapted per platform during desktop integration. */
 .window-controls { display: flex; gap: 9px; }
 .window-controls i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #d9dce1; background: linear-gradient(#f9fafb, #e9ebef); }
-/* Desktop app (demo/desktop-window.js): the bar is the window's title bar. Dragging it moves the window; the system's
+/* Desktop app (src/shell/desktop-window.js): the bar is the window's title bar. Dragging it moves the window; the system's
    buttons sit over it (macOS on the left, out of full screen; Windows and Linux on the right), so the decorative ones go. */
 .desktop .titlebar { -webkit-app-region: drag; }
 .desktop .titlebar :is(a, button, input, select, textarea) { -webkit-app-region: no-drag; }
@@ -314,7 +314,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 .context-menu-separator { height: 1px; margin: 4px 6px; background: var(--border); }
 .context-menu-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .context-menu-text small { overflow: hidden; color: var(--icon); font-size: calc(11.5px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
-/* Recent documents (demo/files.js): names and folders can be long; the menu keeps a readable width and cuts the folder. */
+/* Recent documents (src/shell/files.js): names and folders can be long; the menu keeps a readable width and cuts the folder. */
 .recent-menu { width: min(calc(340px * var(--font-scale)), calc(100vw - 8px)); }
 .recent-menu [role="menuitem"] > span, .recent-menu .context-menu-text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -519,7 +519,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 .file-format input { margin: 0; accent-color: var(--accent); }
 .file-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px 18px; }
 .file-footer.spread { justify-content: space-between; }
-/* Terms of use on first launch (demo/desktop-app.js): the text scrolls, the buttons stay. */
+/* Terms of use on first launch (src/shell/desktop-app.js): the text scrolls, the buttons stay. */
 .terms-dialog .terms-body { max-height: min(60dvh, 560px); overflow: auto; padding: 4px 24px 8px; }
 .file-footer-end { display: flex; gap: 8px; }
 .file-footer .small-button { min-width: calc(80px * var(--font-scale)); padding: 7px 14px; }
