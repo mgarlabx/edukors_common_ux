@@ -876,8 +876,9 @@ globalThis.EdukorsAiAssistant = (() => {
   const stepDoneKeys = { opening: 'aiStepDoneOpening', preparing: 'aiStepDonePreparing', thinking: 'aiStepDoneThinking', reading: 'aiStepDoneReading', researching: 'aiStepDoneResearching', applying: 'aiStepDoneApplying' };
 
 
-  // The account's session limit (the 5-hour window), as the service reports it: one bar with the percentage used. When
-  // the service has no such window, its most used window is shown instead; with no window at all, nothing is shown.
+  // The account's session limit (the 5-hour window), as the service reports it: one bar with the percentage used and,
+  // beside it, when the window resets (the time if today, the date and time otherwise; the full date in the tooltip).
+  // When the service has no such window, its most used window is shown instead; with no window at all, nothing is shown.
   function renderUsage() {
     const account = store.state.loaded ? store.activeAccount() : null;
     const windows = (account && store.state.usage[account.id]?.windows || []).filter(w => Number.isFinite(w.used));
@@ -890,8 +891,17 @@ globalThis.EdukorsAiAssistant = (() => {
     usageView.replaceChildren(
       h('span', { class: 'ai-usage-label', text: label }),
       h('meter', { min: 0, max: 100, value: percent, low: 70, high: 90, optimum: 0, 'aria-label': label, 'aria-valuetext': `${percent}%` }),
-      h('span', { class: 'ai-usage-value', text: `${percent}%` })
+      h('span', { class: 'ai-usage-value', text: `${percent}%` }),
+      ...(shown.resetsAt && resetText(shown.resetsAt) ? [h('span', { class: 'ai-usage-reset', text: `· ${resetText(shown.resetsAt)}` })] : [])
     );
+  }
+  function resetText(iso) {
+    const date = new Date(iso), now = new Date();
+    if (Number.isNaN(date.getTime())) return '';
+    const lang = document.documentElement.lang || 'en';
+    const today = date.toDateString() === now.toDateString();
+    const time = new Intl.DateTimeFormat(lang, today ? { timeStyle: 'short' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
+    return t(today ? 'aiUsageResetsToday' : 'aiUsageResetsOn', { time });
   }
 
   function renderControls() {

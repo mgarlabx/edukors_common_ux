@@ -754,6 +754,7 @@ small.ai-account-meta { display: inline; }
 .ai-usage-summary meter::-webkit-meter-even-less-good-value { border-radius: 3px; background: #d93b3b; }
 .ai-usage-label { flex-shrink: 0; }
 .ai-usage-value { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.ai-usage-reset { flex-shrink: 0; white-space: nowrap; }
 
 :root[data-theme="dark"] .ai-msg-error { color: #ff9b9b; }
 :root[data-theme="dark"] .ai-state[data-state="connected"], :root[data-theme="dark"] .ai-chip[data-state="ok"] .ai-icon, :root[data-theme="dark"] .ai-mcp-list li[data-status="connected"] .ai-icon { color: #4cc685; }
