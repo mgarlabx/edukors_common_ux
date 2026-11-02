@@ -12,7 +12,7 @@
 //   provider, as in the development host; --shared uses the real shared accounts; --data-dir uses another folder
 //   (automated tests: an empty one, never the person's accounts).
 //   Packaged: the shared registry, and this app's settings, skills, and workspaces under the user data folder.
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, session, shell } from "electron";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -56,6 +56,9 @@ export function startDesktopApp(options) {
   const DATA_DIR = CUSTOM_DIR ?? (SHARED ? SHARED_DIR : DEV_DIR);
   // This app's own files (AI settings may hold keys): never inside the repository.
   const APP_DIR = app.isPackaged ? join(app.getPath("userData")) : join(CUSTOM_DIR ?? DEV_DIR, "apps", APP_ID);
+  // With --data-dir (automated tests), Electron's own data (the page's localStorage, caches) goes there too, so a run
+  // neither touches the person's interface preferences nor waits on a copy of the app they have open.
+  if (CUSTOM_DIR && !app.isPackaged) app.setPath("userData", join(CUSTOM_DIR, "electron"));
   // Skills: unpackaged, the app's own folder of sample skills (`skills`, relative to root); packaged, the user data folder.
   const SKILLS_DIR = app.isPackaged ? join(APP_DIR, "skills") : join(ROOT, skills);
   const PAGE = pathToFileURL(join(ROOT, page)).href;
@@ -358,7 +361,10 @@ export function startDesktopApp(options) {
   });
 
   function createWindow() {
+    // The window stays hidden until the page has painted the interface (no white flash at start), on the theme's
+    // background color meanwhile.
     const window = new BrowserWindow({
+      show: false, backgroundColor: nativeTheme.shouldUseDarkColors ? "#181b24" : "#f6f7fb",
       width: 1360, height: 860, minWidth: 360, minHeight: 400, title: name,
       titleBarStyle: "hidden",
       ...(MAC ? { trafficLightPosition: { x: 12, y: Math.round((TITLE_BAR.height - MAC_BUTTONS.height) / 2) } } : { titleBarOverlay: TITLE_BAR }),
@@ -388,6 +394,7 @@ export function startDesktopApp(options) {
     const fullScreen = (value) => () => { if (!window.isDestroyed()) window.webContents.send("edukors:window:state", { fullScreen: value }); };
     window.on("enter-full-screen", fullScreen(true));
     window.on("leave-full-screen", fullScreen(false));
+    window.once("ready-to-show", () => window.show());
     void window.loadURL(PAGE);
     return window;
   }
