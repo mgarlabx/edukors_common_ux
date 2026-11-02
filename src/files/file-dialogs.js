@@ -6,6 +6,7 @@
 //   EdukorsFileDialogs.exportAs({ t, name, folder, formats, format, commit })    → { name, folder, format } | null
 //                         (no name or folder fields: the export goes next to the original file, with the same name)
 //   EdukorsFileDialogs.confirmClose({ t, name })                                  → 'save' | 'discard' | 'cancel'
+//   EdukorsFileDialogs.confirmSaveOriginal({ t, name, format, extension, note })   → 'original' | 'app' | 'cancel'
 //   EdukorsFileDialogs.toast({ t, message, action: { label, onClick } })
 //
 // `t(key)` returns interface text; `{name}`, `{ext}`, and `{path}` in a text are filled in here.
@@ -176,6 +177,24 @@ globalThis.EdukorsFileDialogs = (() => {
     });
   }
 
+  // Before a document opened from another format is first written back in that format: what the format keeps, and the
+  // choice of saving in the app's own format instead.
+  function confirmSaveOriginal({ t, name, format, extension, note }) {
+    return new Promise(resolve => {
+      const { dialog, body, footer, close } = frame({ t, title: fill(t('saveOriginalTitle'), { name }) });
+      if (note) body.append(el('p', { class: 'file-hint', text: note }));
+      const app = button(fill(t('saveAsAppAction'), { ext: extension })), cancel = button(t('cancel')), go = button(fill(t('saveOriginalAction'), { format }), 'primary');
+      footer.classList.add('spread');
+      footer.append(app, el('span', { class: 'file-footer-end' }, [cancel, go]));
+      const finish = present(dialog, value => resolve(value ?? 'cancel'));
+      app.addEventListener('click', () => finish('app'));
+      cancel.addEventListener('click', () => finish('cancel'));
+      close.addEventListener('click', () => finish('cancel'));
+      go.addEventListener('click', () => finish('original'));
+      go.focus();
+    });
+  }
+
   // A short notice at the bottom of the window, announced to screen readers, with an optional action.
   function toast({ t, message, action, duration = 6000 }) {
     let region = document.getElementById('toast-region');
@@ -193,5 +212,5 @@ globalThis.EdukorsFileDialogs = (() => {
     return remove;
   }
 
-  return Object.freeze({ save, exportAs, confirmClose, toast, fileNameProblem, fill });
+  return Object.freeze({ save, exportAs, confirmClose, confirmSaveOriginal, toast, fileNameProblem, fill });
 })();

@@ -39,7 +39,7 @@ const COMMON = fileURLToPath(new URL("..", import.meta.url));
 export function startDesktopApp(options) {
   const {
     appId, name, root, page = "index.html", skills = "skills", documentExtensions,
-    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [],
+    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [], saveExtensions = [],
   } = options;
   if (!/^[a-z][a-z0-9-]*$/.test(appId ?? "") || !name || !root || !documentExtensions?.length) throw new Error("startDesktopApp needs appId, name, root, and documentExtensions.");
   const ROOT = root;
@@ -99,6 +99,8 @@ export function startDesktopApp(options) {
   // of its own yet (Save asks for a name and saves in the app's format; the original is never written).
   const OPEN_EXTENSIONS = [...DOCUMENT_EXTENSIONS, ...openExtensions.map((e) => e.toLowerCase()).filter((e) => !DOCUMENT_EXTENSIONS.includes(e))];
   const MAX_OPEN_BYTES = 50 * 2 ** 20;
+  // Of those, the formats a document opened from such a file can be saved back in (only into that very file).
+  const SAVE_EXTENSIONS = saveExtensions.map((e) => e.toLowerCase()).filter((e) => OPEN_EXTENSIONS.includes(e) && !DOCUMENT_EXTENSIONS.includes(e));
   // PDF and PNG are rendered here from the page's HTML; the other formats come from the page ready to write.
   const RENDERED = new Set(["pdf", "png"]);
   const EXPORT_EXTENSIONS = Object.fromEntries(Object.entries({ html: ".html", pdf: ".pdf", png: ".png", md: ".md", txt: ".txt", docx: ".docx" }).filter(([format]) => exportFormats.includes(format)));
@@ -131,7 +133,15 @@ export function startDesktopApp(options) {
   });
 
   handle("edukors:files:save", (event, { folder, name, extension, bytes, replace }) => answer(async () => {
-    const result = await writeFileSafely({ folder, name, extension, bytes, replace: replace === true, allowed: DOCUMENT_EXTENSIONS });
+    const lower = String(extension).toLowerCase();
+    let allowed = DOCUMENT_EXTENSIONS;
+    // Another format: only into a file that was opened (it is in Recent), replacing it.
+    if (!DOCUMENT_EXTENSIONS.includes(lower)) {
+      if (!SAVE_EXTENSIONS.includes(lower)) throw new FileError("EXTENSION", `Files with the extension "${extension}" cannot be saved.`);
+      if (typeof folder !== "string" || typeof name !== "string" || !(await recent.has(join(folder, `${name}${extension}`)))) throw new FileError("ORIGINAL", "Only a file that was opened can be saved in its own format.");
+      allowed = [extension];
+    }
+    const result = await writeFileSafely({ folder, name, extension, bytes, replace: replace === true, allowed });
     if (result.path) await recent.add(result.path);
     return result;
   }));

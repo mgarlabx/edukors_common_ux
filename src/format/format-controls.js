@@ -26,8 +26,9 @@ globalThis.EdukorsFormat = (() => {
     lineWidths: [0, 1, 2, 4, 8],
     lineStyles: ['solid', 'dashed', 'dotted'],
     // Actions of the table group: the value reported as tableAction and the translation key of its name.
-    tableActions: [['addRowBefore', 'fmtRowAbove'], ['addRowAfter', 'fmtRowBelow'], ['addColumnBefore', 'fmtColumnLeft'], ['addColumnAfter', 'fmtColumnRight'],
-      ['deleteRow', 'fmtDeleteRow'], ['deleteColumn', 'fmtDeleteColumn'], ['mergeCells', 'fmtMergeCells'], ['splitCell', 'fmtSplitCell'], ['toggleHeaderRow', 'fmtHeaderRow'], ['deleteTable', 'fmtDeleteTable']],
+    // null separates groups: rows, columns, deleting rows and columns, merging, the header row, deleting the table.
+    tableActions: [['addRowBefore', 'fmtRowAbove'], ['addRowAfter', 'fmtRowBelow'], null, ['addColumnBefore', 'fmtColumnLeft'], ['addColumnAfter', 'fmtColumnRight'], null,
+      ['deleteRow', 'fmtDeleteRow'], ['deleteColumn', 'fmtDeleteColumn'], null, ['mergeCells', 'fmtMergeCells'], ['splitCell', 'fmtSplitCell'], null, ['toggleHeaderRow', 'fmtHeaderRow'], null, ['deleteTable', 'fmtDeleteTable']],
     // Paragraph styles for the blockStyle group: the value reported to the app and the translation key of its name.
     blockStyles: [['paragraph', 'fmtStyleNormal'], ['heading1', 'fmtHeading1'], ['heading2', 'fmtHeading2'], ['heading3', 'fmtHeading3'], ['quote', 'fmtQuote'], ['code', 'fmtCodeBlock']],
     // Limits for typed sizes. Typed values are rounded to `step` and clamped; invalid input restores the previous value.
@@ -91,6 +92,8 @@ globalThis.EdukorsFormat = (() => {
     function open(fromKeyboard = false) {
       menu = el('div', { class: `pick-menu${grid ? ' grid' : ''}`, role: 'listbox', 'aria-label': label });
       for (const option of options) {
+        // { separator: true } draws a line between groups of options.
+        if (option.separator) { menu.append(el('div', { class: 'pick-separator', role: 'separator' })); continue; }
         const item = el('button', { type: 'button', role: 'option', 'aria-selected': String(option.selected === true), 'aria-label': option.title || '', title: option.title || '' }, [option.label]);
         if (!option.title) item.removeAttribute('aria-label');
         // `tip`: an instant custom tooltip instead of the native title (used for color names).
@@ -366,7 +369,7 @@ globalThis.EdukorsFormat = (() => {
     },
     table: ({ state, t, change, options }) => [
       pick({ id: 'tableAction', label: t('fmtTable'), icon: 'common-table', value: t('fmtTable'), wide: true,
-        options: options.tableActions.map(([value, key]) => ({ value, label: t(key), selected: false })), onPick: value => change('tableAction', value) }),
+        options: options.tableActions.map(entry => (entry ? { value: entry[0], label: t(entry[1]), selected: false } : { separator: true })), onPick: value => change('tableAction', value) }),
       colorPick({ id: 'cellFill', label: t('fmtCellFill'), icon: 'common-fill', value: state.cellFill || 'transparent', none: t('fmtNoFill'), t, onPick: value => change('cellFill', value) })
     ],
     text: ({ state, t, change, options }) => [

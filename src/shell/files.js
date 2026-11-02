@@ -35,7 +35,8 @@
       const result = await desktop.save({ folder, name: base, extension: extension(), bytes, replace });
       if (result.exists) return { exists: true };
       if (result.error) return { error: result.error };
-      Object.assign(doc, { saved: true, name: base, folder: result.folder, file: result.file, path: result.path });
+      // Saved in the app's format: from now on it is that file (a document opened from another format leaves it).
+      Object.assign(doc, { saved: true, name: base, folder: result.folder, file: result.file, path: result.path, originFormat: null });
       document.dispatchEvent(new CustomEvent('edukors:document-saved', { detail: { doc, committed } }));
       EdukorsAiAssistant.documentSaved(doc);
       EdukorsDocuments.refresh();
@@ -82,8 +83,33 @@
   const host = desktop ? desktopHost : simulatedHost;
 
   // ----- Commands -----
+  // Writes a document opened from another format back into its file, in that format. The first time, the person
+  // confirms (or chooses the app's own format instead).
+  async function saveOriginal(doc) {
+    if (!doc.originConfirmed) {
+      const choice = await Dialogs.confirmSaveOriginal({ t, name: doc.file, format: doc.originExt.slice(1).toUpperCase(), extension: extension(), note: doc.originFormat === 'html' ? '' : t('saveOriginalNote') });
+      if (choice === 'cancel') return false;
+      if (choice === 'app') { Object.assign(doc, { saved: false, file: undefined, path: undefined, originFormat: null }); return save({ doc }); }
+      doc.originConfirmed = true;
+    }
+    try {
+      const out = await app().exportFile({ doc, format: doc.originFormat, title: doc.name });
+      const result = await desktop.save({ folder: doc.folder, name: doc.file.slice(0, -doc.originExt.length), extension: doc.originExt, bytes: out.data ?? out.html, replace: true });
+      if (result.error) throw new Error(result.error);
+      document.dispatchEvent(new CustomEvent('edukors:document-saved', { detail: { doc } }));
+      EdukorsAiAssistant.documentSaved(doc);
+      EdukorsDocuments.refresh();
+      Dialogs.toast({ t, message: Dialogs.fill(t('savedToast'), { name: doc.file }) });
+      return true;
+    } catch (error) {
+      Dialogs.toast({ t, message: fileMessage('saveFailed', { name: doc.file, reason: error.message }) });
+      return false;
+    }
+  }
+
   async function save({ as = false, doc = EdukorsDocuments.active() } = {}) {
     if (!doc) return false;
+    if (!as && doc.originFormat && desktop) return saveOriginal(doc);
     // A document that already has a file is saved again without asking anything.
     if (doc.saved && !as) {
       const result = await host.save(doc, { name: doc.name, folder: doc.folder, replace: true });
@@ -135,8 +161,9 @@
 
   // A file read by the host becomes a document tab (or activates the tab that already shows it).
   // A file of another format (opened from Open or Recent, when the app lists it in startDesktopApp's openExtensions)
-  // becomes a document named after it, in its folder, without a file of its own: Save asks for a name and saves in the
-  // app's format; the original is never written.
+  // becomes a document named after it, in its folder. If the app can write that format back (file.saveOriginal and
+  // startDesktopApp's saveExtensions), Save writes into the file itself, after a first confirmation; otherwise the
+  // document has no file of its own, and Save asks for a name and saves in the app's format.
   async function adoptFile({ path, name, folder, file: fileName, bytes }) {
     const open = EdukorsDocuments.list().find(doc => doc.path === path || doc.origin === path);
     if (open) { EdukorsDocuments.activate(open.id); return; }
@@ -146,7 +173,12 @@
       try {
         if (!format || typeof app().importFile !== 'function') throw new Error(t('importUnknown'));
         const converted = await app().importFile({ format: format.id, name, extension: ext, bytes, t });
-        const doc = EdukorsDocuments.add({ name, folder, origin: path });
+        // A format the app can write back (EdukorsAppConfig.file.saveOriginal: import format → export format) is saved
+        // into this file; otherwise Save asks where to save it in the app's format.
+        const back = config().saveOriginal?.[format.id];
+        const doc = back
+          ? EdukorsDocuments.add({ saved: true, name, folder, file: fileName, path, origin: path, originFormat: back, originExt: fileName.slice(dot) })
+          : EdukorsDocuments.add({ name, folder, origin: path });
         app().adopt(doc, converted);
         EdukorsDocuments.activate(doc.id);
       } catch (error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: fileName, reason: error.message }) }); }

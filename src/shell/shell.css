@@ -187,6 +187,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 .pick-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; display: flex; flex-direction: column; min-width: 100%; max-height: 320px; overflow: auto; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 28px #17213b24; }
 .pick-menu > [role="option"] { display: flex; align-items: center; padding: 5px 10px; border: 0; border-radius: 5px; background: none; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
 .pick-menu > [role="option"]:hover { background: #6156db0d; }
+.pick-menu > .pick-separator { flex-shrink: 0; height: 1px; margin: 4px 6px; background: var(--border); }
 .pick-menu > [role="option"][aria-selected="true"] { background: #6156db16; color: var(--accent); }
 .pick-menu.grid { display: grid; grid-template-columns: repeat(5, calc(28px * var(--font-scale))); gap: 4px; min-width: 0; }
 .pick-menu.grid > [role="option"] { justify-content: center; padding: 3px; }
