@@ -39,7 +39,7 @@ const COMMON = fileURLToPath(new URL("..", import.meta.url));
 export function startDesktopApp(options) {
   const {
     appId, name, root, page = "index.html", skills = "skills", documentExtensions,
-    importExtensions = [], exportFormats = ["html", "pdf", "png"],
+    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [],
   } = options;
   if (!/^[a-z][a-z0-9-]*$/.test(appId ?? "") || !name || !root || !documentExtensions?.length) throw new Error("startDesktopApp needs appId, name, root, and documentExtensions.");
   const ROOT = root;
@@ -95,6 +95,10 @@ export function startDesktopApp(options) {
   // ---------- Files ----------
   // What this app writes and opens. The page may ask for more; the host refuses anything outside these lists.
   const DOCUMENT_EXTENSIONS = documentExtensions.map((e) => e.toLowerCase());
+  // Files of other formats that Open and Recent also accept: the page converts them into a document that has no file
+  // of its own yet (Save asks for a name and saves in the app's format; the original is never written).
+  const OPEN_EXTENSIONS = [...DOCUMENT_EXTENSIONS, ...openExtensions.map((e) => e.toLowerCase()).filter((e) => !DOCUMENT_EXTENSIONS.includes(e))];
+  const MAX_OPEN_BYTES = 50 * 2 ** 20;
   // PDF and PNG are rendered here from the page's HTML; the other formats come from the page ready to write.
   const RENDERED = new Set(["pdf", "png"]);
   const EXPORT_EXTENSIONS = Object.fromEntries(Object.entries({ html: ".html", pdf: ".pdf", png: ".png", md: ".md", txt: ".txt", docx: ".docx" }).filter(([format]) => exportFormats.includes(format)));
@@ -103,7 +107,9 @@ export function startDesktopApp(options) {
   const IMPORT_EXTENSIONS = importExtensions.map((e) => e.toLowerCase());
   const MAX_IMPORT_BYTES = 50 * 2 ** 20;
   // Recent documents: kept here, in the app's data folder, and updated only after a real save or open.
-  const recent = createRecentList({ file: join(APP_DIR, "recent.json"), allowed: DOCUMENT_EXTENSIONS });
+  const recent = createRecentList({ file: join(APP_DIR, "recent.json"), allowed: OPEN_EXTENSIONS });
+  // A document of this app, or a file of another format Open accepts (at most 50 MB, like an import).
+  const readOpenable = (path) => readDocumentFile(path, { allowed: OPEN_EXTENSIONS, maxBytes: DOCUMENT_EXTENSIONS.includes(extname(path).toLowerCase()) ? undefined : MAX_OPEN_BYTES });
 
   // Problems the person can act on come back as { error: message }; anything unexpected is logged and reported plainly.
   const answer = async (work) => {
@@ -131,13 +137,16 @@ export function startDesktopApp(options) {
   }));
 
   // Open always goes through the system's dialog; the page cannot name a path here (Recent has its own request).
-  handle("edukors:files:open", (event, { title, filterName }) => answer(async () => {
+  handle("edukors:files:open", (event, { title, filterName, allLabel }) => answer(async () => {
     const result = await dialog.showOpenDialog(windowOf(event), {
       title: text(title), defaultPath: app.getPath("documents"), properties: ["openFile"],
-      filters: [{ name: text(filterName, 80) || "Documents", extensions: DOCUMENT_EXTENSIONS.map((e) => e.slice(1)) }],
+      filters: [
+        ...(OPEN_EXTENSIONS.length > DOCUMENT_EXTENSIONS.length ? [{ name: text(allLabel, 80) || "All supported files", extensions: OPEN_EXTENSIONS.map((e) => e.slice(1)) }] : []),
+        { name: text(filterName, 80) || "Documents", extensions: DOCUMENT_EXTENSIONS.map((e) => e.slice(1)) },
+      ],
     });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
-    const file = await readDocumentFile(result.filePaths[0], { allowed: DOCUMENT_EXTENSIONS });
+    const file = await readOpenable(result.filePaths[0]);
     await recent.add(file.path);
     return { file };
   }));
@@ -164,7 +173,7 @@ export function startDesktopApp(options) {
   handle("edukors:files:open-recent", (event, { path }) => answer(async () => {
     if (!(await recent.has(path))) throw new FileError("RECENT", "This document is not in the list of recent documents.");
     try {
-      const file = await readDocumentFile(path, { allowed: DOCUMENT_EXTENSIONS });
+      const file = await readOpenable(path);
       await recent.add(file.path);
       return { file };
     } catch (error) {

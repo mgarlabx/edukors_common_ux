@@ -125,16 +125,33 @@
   // ----- Open (desktop only) -----
   async function openFile() {
     if (document.querySelector('dialog[open]')) return;
-    const result = await desktop.open({ title: t('openTitle'), filterName: t('openFilter') });
+    // The filter names the app without "Edukors" (Text Editor documents, Common documents).
+    const appName = String(EdukorsAppConfig.name || '').replace(/^Edukors\s+/i, '');
+    const result = await desktop.open({ title: t('openTitle'), filterName: Dialogs.fill(t('openFilter'), { app: appName }), allLabel: t('importAll') });
     if (result.canceled) return;
     if (result.error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: '', reason: result.error }) }); return; }
     await adoptFile(result.file);
   }
 
   // A file read by the host becomes a document tab (or activates the tab that already shows it).
+  // A file of another format (opened from Open or Recent, when the app lists it in startDesktopApp's openExtensions)
+  // becomes a document named after it, in its folder, without a file of its own: Save asks for a name and saves in the
+  // app's format; the original is never written.
   async function adoptFile({ path, name, folder, file: fileName, bytes }) {
-    const open = EdukorsDocuments.list().find(doc => doc.path === path);
+    const open = EdukorsDocuments.list().find(doc => doc.path === path || doc.origin === path);
     if (open) { EdukorsDocuments.activate(open.id); return; }
+    const dot = fileName.lastIndexOf('.'), ext = dot > 0 ? fileName.slice(dot).toLowerCase() : '';
+    if (ext !== extension().toLowerCase()) {
+      const format = importFormats().find(item => item.extensions.includes(ext));
+      try {
+        if (!format || typeof app().importFile !== 'function') throw new Error(t('importUnknown'));
+        const converted = await app().importFile({ format: format.id, name, extension: ext, bytes, t });
+        const doc = EdukorsDocuments.add({ name, folder, origin: path });
+        app().adopt(doc, converted);
+        EdukorsDocuments.activate(doc.id);
+      } catch (error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: fileName, reason: error.message }) }); }
+      return;
+    }
     let content;
     try { content = await app().fromBytes(bytes); }
     catch (error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: fileName, reason: error.message }) }); return; }
@@ -218,8 +235,9 @@
       if (result.error) { Dialogs.toast({ t, message: Dialogs.fill(t('recentFailed'), { reason: result.error }) }); return; }
       list = result.recent;
     }
+    // Files of other formats show their extension (lesson.docx), so they are not confused with the app's documents.
     const items = list.map(entry => ({
-      label: entry.name,
+      label: entry.file.toLowerCase().endsWith(extension().toLowerCase()) ? entry.name : entry.file,
       detail: entry.exists ? shortFolder(entry.folder) : `${t('recentMissing')} · ${shortFolder(entry.folder)}`,
       title: entry.path,
       action: () => openRecent(entry)

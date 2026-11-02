@@ -142,6 +142,8 @@ Decided 2026-11-02, with the Text Editor as the first app built on Common. An ap
    startDesktopApp({ appId: "text", name: "Edukors Text Editor", root: <the app folder>, documentExtensions: [".etex"], exportFormats: [] });
    ```
 
+   With `openExtensions` (for example `[".docx", ".md", ".txt", ".pdf"]`), Open and Recent also accept files of those formats: the page converts them with `EdukorsAppDocument.importFile` (the format found in `file.importFormats`) into a document named after the file, in its folder, that has no file of its own; Save then asks for a name and saves in the app's format, and the original is never written.
+
    `desktop/host.mjs` runs everything the apps share: AI, files, Recent, import and export (only the extensions the app lists), the macOS menu, the title bar, terms, and update checks (the app's `package.json`: `"edukors": { "updates": "owner/repo" }`). Unpackaged runs accept `--shared`, `--data-dir <dir>`, and `--verbose`; `EDUKORS_ACCEPT_TERMS=1` skips the terms in automated tests of an unpackaged app.
 
 The Common demo is built the same way (`demo/index.html`, `demo/app-config.js`, `demo/document-file.js` with its `EdukorsAppDocument`, `desktop/main.mjs`).

@@ -521,6 +521,11 @@
     "name": "interface",
     "body": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 8.5h18\"/><path d=\"M6 6.25h.01M8.5 6.25h.01\"/><rect x=\"6.5\" y=\"11.5\" width=\"5\" height=\"5.5\" rx=\"1\"/><path d=\"M14.5 12h3M14.5 14.5h3M14.5 17h2\"/>"
   },
+  "common-table": {
+    "source": "Common",
+    "name": "table",
+    "body": "<rect x=\"3.5\" y=\"4.5\" width=\"17\" height=\"15\" rx=\"2\"/><path d=\"M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10M14.5 9.5v10\"/>"
+  },
   "common-import": {
     "source": "Common",
     "name": "import",

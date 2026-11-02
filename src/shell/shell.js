@@ -36,11 +36,11 @@ for (const [key, label, icon] of [['undo', 'Undo', 'graph-Undo'], ['redo', 'Redo
   document.getElementById('edit-actions').append(separator);
 }
 for (const [key, label, icon] of [['cut', 'Cut', 'graph-Cut'], ['copy', 'Copy', 'graph-Copy'], ['paste', 'Paste', 'graph-Paste'], ['duplicate', 'Duplicate', 'slides-duplicate'], ['delete', 'Delete', 'graph-Trash']]) addButton('edit-actions', key, label, true, icon);
-// Insert group: the app chooses what it offers, with EdukorsAppConfig.insert (any app) or EdukorsAppConfig.canvas.insert
-// (a canvas app; all three when it names none). No choice means no Insert group.
+// Insert group: the app chooses what it offers (text, table, shape, image), with EdukorsAppConfig.insert (any app) or
+// EdukorsAppConfig.canvas.insert (a canvas app; text, shape, and image when it names none). No choice means no Insert group.
 {
   const offered = EdukorsAppConfig.insert ?? EdukorsAppConfig.canvas?.insert ?? (EdukorsAppConfig.canvas ? ['text', 'shape', 'image'] : []);
-  for (const [kind, key, label, icon] of [['text', 'insertText', 'Insert text', 'slides-text'], ['shape', 'insertShape', 'Insert shape', 'slides-shape'], ['image', 'insertImage', 'Insert image', 'slides-image']]) {
+  for (const [kind, key, label, icon] of [['text', 'insertText', 'Insert text', 'slides-text'], ['table', 'insertTable', 'Insert table', 'common-table'], ['shape', 'insertShape', 'Insert shape', 'slides-shape'], ['image', 'insertImage', 'Insert image', 'slides-image']]) {
     if (offered.includes(kind)) addButton('insert-actions', key, label, true, icon);
   }
   if (!offered.length) { const group = document.getElementById('insert-actions'); group.previousElementSibling?.remove(); group.remove(); }

@@ -86,7 +86,7 @@ function writeMessage(error) {
 }
 
 /** Reads a document the person chose: an absolute path to a regular file with an allowed extension. { path, name, folder, bytes }. */
-export async function readDocumentFile(path, { allowed, maxBytes = MAX_DOCUMENT_BYTES }) {
+export async function readDocumentFile(path, { allowed, maxBytes = MAX_DOCUMENT_BYTES } = {}) {
   if (typeof path !== "string" || !isAbsolute(path)) fail("PATH", "The file must be given by its full path.");
   const extension = extname(path).toLowerCase();
   if (!allowed.includes(extension)) fail("EXTENSION", `Files with the extension "${extension}" cannot be opened here.`);

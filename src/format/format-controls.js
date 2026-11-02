@@ -8,6 +8,8 @@
 //   link:   popover with address (http, https, mailto) and a Create QR code button (reported as the `createQr` action with the address); apply and remove
 //   image:  replace (an action the app handles), crop toggle, keep proportions, border (line width, style, color), shadow, opacity
 //   arrange: bring to front, send to back (actions the app handles)
+//   table: a menu of table actions (rows, columns, merge, split, header row, delete), reported as tableAction, and the
+//          cells' fill (cellFill); the app may pass its own actions as options.tableActions
 //   blockStyle: the paragraph's style (normal, headings 1–3, quote, code; the app may pass its own list as options.blockStyles)
 // The library only renders controls and reports changes: onChange(property, value). The app applies them to its content
 // and passes the selection's current values back in `state`. Buttons and menus never take the focus on pointer down,
@@ -23,6 +25,9 @@ globalThis.EdukorsFormat = (() => {
     fontFamilies: ['Arial', 'Georgia', 'Times New Roman', 'Verdana', 'Trebuchet MS', 'Courier New'],
     lineWidths: [0, 1, 2, 4, 8],
     lineStyles: ['solid', 'dashed', 'dotted'],
+    // Actions of the table group: the value reported as tableAction and the translation key of its name.
+    tableActions: [['addRowBefore', 'fmtRowAbove'], ['addRowAfter', 'fmtRowBelow'], ['addColumnBefore', 'fmtColumnLeft'], ['addColumnAfter', 'fmtColumnRight'],
+      ['deleteRow', 'fmtDeleteRow'], ['deleteColumn', 'fmtDeleteColumn'], ['mergeCells', 'fmtMergeCells'], ['splitCell', 'fmtSplitCell'], ['toggleHeaderRow', 'fmtHeaderRow'], ['deleteTable', 'fmtDeleteTable']],
     // Paragraph styles for the blockStyle group: the value reported to the app and the translation key of its name.
     blockStyles: [['paragraph', 'fmtStyleNormal'], ['heading1', 'fmtHeading1'], ['heading2', 'fmtHeading2'], ['heading3', 'fmtHeading3'], ['quote', 'fmtQuote'], ['code', 'fmtCodeBlock']],
     // Limits for typed sizes. Typed values are rounded to `step` and clamped; invalid input restores the previous value.
@@ -359,6 +364,11 @@ globalThis.EdukorsFormat = (() => {
       return [pick({ id: 'blockStyle', label: t('fmtBlockStyle'), value: current ? t(current[1]) : '', wide: true,
         options: options.blockStyles.map(([value, key]) => ({ value, label: t(key), selected: value === state.blockStyle })), onPick: value => change('blockStyle', value) })];
     },
+    table: ({ state, t, change, options }) => [
+      pick({ id: 'tableAction', label: t('fmtTable'), icon: 'common-table', value: t('fmtTable'), wide: true,
+        options: options.tableActions.map(([value, key]) => ({ value, label: t(key), selected: false })), onPick: value => change('tableAction', value) }),
+      colorPick({ id: 'cellFill', label: t('fmtCellFill'), icon: 'common-fill', value: state.cellFill || 'transparent', none: t('fmtNoFill'), t, onPick: value => change('cellFill', value) })
+    ],
     text: ({ state, t, change, options }) => [
       ...[['bold', 'fmtBold', 'B'], ['italic', 'fmtItalic', 'I'], ['underline', 'fmtUnderline', 'U'], ['strike', 'fmtStrike', 'S']].map(([key, label, text]) =>
         toggle({ id: key, label: t(label), text, pressed: state[key], onToggle: () => change(key, !state[key]) })),
@@ -404,7 +414,7 @@ globalThis.EdukorsFormat = (() => {
       opacitySlider({ property: 'imageOpacity', state, t, change, live })
     ]
   };
-  const groupLabels = { blockStyle: 'fmtBlockStyle', arrange: 'fmtArrange', text: 'fmtText', shape: 'fmtShape', align: 'fmtAlign', valign: 'fmtVAlign', lists: 'fmtLists', link: 'fmtLink', image: 'fmtImage' };
+  const groupLabels = { table: 'fmtTable', blockStyle: 'fmtBlockStyle', arrange: 'fmtArrange', text: 'fmtText', shape: 'fmtShape', align: 'fmtAlign', valign: 'fmtVAlign', lists: 'fmtLists', link: 'fmtLink', image: 'fmtImage' };
 
   // Renders the requested groups into `container`, separated, and keeps focus on the control that changed.
   function render(container, { groups: names, state, t, onChange, options = {} }) {
