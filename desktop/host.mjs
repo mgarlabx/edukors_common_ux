@@ -59,6 +59,9 @@ export function startDesktopApp(options) {
   // With --data-dir (automated tests), Electron's own data (the page's localStorage, caches) goes there too, so a run
   // neither touches the person's interface preferences nor waits on a copy of the app they have open.
   if (CUSTOM_DIR && !app.isPackaged) app.setPath("userData", join(CUSTOM_DIR, "electron"));
+  // Packaged, one copy runs: opening a document while the app runs (Windows, Linux) hands its path to that copy
+  // ("Files the system opens" below). Unpackaged copies may run side by side (development, automated tests).
+  if (app.isPackaged && !app.requestSingleInstanceLock()) { app.quit(); return; }
   // Skills: unpackaged, the app's own folder of sample skills (`skills`, relative to root); packaged, the user data folder.
   const SKILLS_DIR = app.isPackaged ? join(APP_DIR, "skills") : join(ROOT, skills);
   const PAGE = pathToFileURL(join(ROOT, page)).href;
@@ -218,6 +221,59 @@ export function startDesktopApp(options) {
   handle("edukors:files:forget-recent", (event, { path }) => answer(async () => { if (typeof path === "string") await recent.remove(path); else await recent.clear(); return {}; }));
 
   handle("edukors:files:reveal", (event, { path }) => answer(async () => { shell.showItemInFolder(await revealablePath(path)); return {}; }));
+
+  // ---------- Files the system opens ----------
+  // Double-clicking a document, Open With, or dropping it on the app's icon: macOS sends "open-file" (also before the
+  // app is ready, when the double-click launches it); Windows and Linux start the app with the path in its arguments,
+  // or hand them to the running copy ("second-instance"). The paths wait until a window's page listens
+  // (EdukorsDesktop.files.onOpened); each is read like a file picked in Open and then sent to that page.
+  const pendingOpen = [];
+  const listening = new Set(); // webContents ids whose page listens
+  const filesIn = (argv, cwd) => (Array.isArray(argv) ? argv : [])
+    .filter((arg) => typeof arg === "string" && !arg.startsWith("-") && OPEN_EXTENSIONS.includes(extname(arg).toLowerCase()))
+    .map((arg) => resolve(cwd ?? process.cwd(), arg));
+  function listeningWindow() {
+    const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && listening.has(w.webContents.id));
+    const focused = BrowserWindow.getFocusedWindow();
+    return windows.includes(focused) ? focused : windows[0];
+  }
+  async function deliverOpened() {
+    const window = listeningWindow();
+    if (!window) return;
+    while (pendingOpen.length) {
+      const path = pendingOpen.shift();
+      const result = await answer(async () => {
+        const file = await readOpenable(path);
+        await rememberFolder(file.folder);
+        await recent.add(file.path);
+        return { file };
+      });
+      if (!window.isDestroyed()) window.webContents.send("edukors:files:opened", { ...result, name: basename(path) });
+    }
+    if (window.isDestroyed() || !window.isVisible()) return;
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  }
+  function requestOpen(paths) {
+    if (!paths.length) return;
+    pendingOpen.push(...paths);
+    if (!app.isReady()) return; // the first window's page asks for them when it listens
+    if (!BrowserWindow.getAllWindows().length) createWindow(); // macOS: the app runs without windows
+    else void deliverOpened();
+  }
+  ipcMain.on("edukors:files:opened-listen", (event) => {
+    if (!trusted(event)) return;
+    const id = event.sender.id;
+    if (!listening.has(id)) { listening.add(id); event.sender.once("destroyed", () => listening.delete(id)); }
+    void deliverOpened();
+  });
+  app.on("open-file", (event, path) => { event.preventDefault(); requestOpen([path]); });
+  app.on("second-instance", (_event, argv, cwd) => {
+    requestOpen(filesIn(argv.slice(1), cwd));
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window && !window.isDestroyed() && window.isVisible()) { if (window.isMinimized()) window.restore(); window.focus(); }
+  });
+  requestOpen(filesIn(process.argv.slice(app.isPackaged ? 1 : 2)));
 
   // Export: the page renders the document to one HTML page (images inline); a hidden window turns it into PDF or PNG.
   // That window has no preload, runs no scripts, and cannot reach the network.

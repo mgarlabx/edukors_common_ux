@@ -316,6 +316,13 @@
     button('open').addEventListener('click', openFile);
     for (const type of ['edukors:document-modified', 'edukors:document-saved', 'edukors:documents-changed']) document.addEventListener(type, reportUnsaved);
     desktop.info().then(info => { defaultFolder = info.documents; homeFolder = info.home; });
+    // Documents the system opens (double-click, Open With, the app's icon). Only once the page has loaded: the app's
+    // scripts, which turn bytes into a document, load after this one.
+    const listen = () => desktop.onOpened(result => {
+      if (result.error) Dialogs.toast({ t, message: fileMessage('openFailed', { name: result.name || '', reason: result.error }) });
+      else adoptFile(result.file);
+    });
+    if (document.readyState === 'complete') listen(); else addEventListener('load', listen, { once: true });
   }
 
   // Cmd/Ctrl+S saves; adding Shift asks for a new name and place.
