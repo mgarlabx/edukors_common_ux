@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edukors icon library</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:32px;background:#f6f7fb;color:#263149;font:14px Arial,sans-serif}header{max-width:1100px;margin:auto}h1{font-size:24px}a{color:#6156db}input{width:100%;padding:12px;border:1px solid #dce0ec;border-radius:6px;font:inherit;margin:16px 0 24px}main{max-width:1100px;margin:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.card{background:white;border:1px solid #dce0ec;border-radius:8px;padding:20px 12px;text-align:center}.samples{display:flex;align-items:center;justify-content:center;gap:18px;height:40px;color:#64718e}.name{display:block;margin-top:16px;overflow-wrap:anywhere}small{display:block;color:#64718e;margin-top:6px}#empty{max-width:1100px;margin:auto}
+</style>
+</head>
+<body>
+<header><a href="index.html">← Closed workspace</a><h1>Edukors icon library</h1><p>Original Graph and Slides icons · 24 × 24 grid · 1.75 stroke · previews at 18 and 24 px</p><label for="search">Filter by name or source</label><input id="search" type="search" placeholder="Settings, Graph, Slides…"><p id="count" aria-live="polite"></p></header>
+<main id="gallery"></main><p id="empty" hidden>No matching icons.</p>
+<script src="../src/icons/icons.js"></script>
+<script>
+const gallery = document.getElementById('gallery');
+const cards = Object.entries(EdukorsIcons.catalog).map(([id, icon]) => {
+  const card = document.createElement('article'); card.className = 'card';
+  const samples = document.createElement('div'); samples.className = 'samples';
+  samples.innerHTML = EdukorsIcons.svg(id,18) + EdukorsIcons.svg(id,24);
+  const name = document.createElement('strong'); name.className = 'name'; name.textContent = icon.name;
+  const source = document.createElement('small'); source.textContent = icon.source;
+  card.append(samples,name,source); gallery.append(card);
+  return {card, text: `${icon.source} ${icon.name}`.toLowerCase()};
+});
+function filter(){
+  const query = document.getElementById('search').value.trim().toLowerCase();
+  let count = 0;
+  for(const item of cards){item.card.hidden = !item.text.includes(query);if(!item.card.hidden)count++;}
+  document.getElementById('count').textContent = `${count} icons`;
+  document.getElementById('empty').hidden = count !== 0;
+}
+document.getElementById('search').addEventListener('input',filter);filter();
+</script>
+</body></html>

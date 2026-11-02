@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Edukors Common: a page with the three kinds of object the shared canvas edits (text, shape, picture). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6f66e8"/><stop offset="1" stop-color="#4a3fc0"/></linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>
+  <rect x="232" y="262" width="560" height="500" rx="36" fill="#fff"/>
+  <rect x="290" y="324" width="250" height="36" rx="18" fill="#6156db"/>
+  <rect x="290" y="392" width="330" height="22" rx="11" fill="#c9cdf5"/>
+  <rect x="290" y="436" width="280" height="22" rx="11" fill="#c9cdf5"/>
+  <rect x="290" y="512" width="170" height="170" rx="20" fill="#e9e7fb" stroke="#6156db" stroke-width="12"/>
+  <circle cx="622" cy="597" r="90" fill="#6156db" fill-opacity=".85"/>
+</svg>

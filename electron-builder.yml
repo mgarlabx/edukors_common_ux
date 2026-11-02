@@ -1,0 +1,71 @@
+# Common is never installed by itself: this file is the model each app copies and adapts (appId, productName, icon,
+# file association, appx identity, publish), and `npm run package` (tools/package.mjs) builds the demo locally only to
+# test the shared base. Installers: DMG (macOS), MSIX (Windows), AppImage (Linux), built on the matching system.
+# Signing: on macOS electron-builder signs with the "Developer ID Application" certificate in the keychain and notarizes
+# when APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID are set in the environment (never in files).
+# Windows MSIX must be signed for the Microsoft Store (identity from Partner Center) or with a code-signing certificate.
+appId: org.edukors.common
+productName: Edukors Common
+copyright: Copyright © 2026 Edukors
+directories:
+  output: release
+  buildResources: build
+files:
+  - package.json
+  - desktop/**
+  - demo/**
+  - src/**
+  # The AI runtime runs the CLI the person installed (Claude Code, Codex), not the copy bundled in the SDK (~220 MB).
+  - "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  - "!**/*.d.ts"
+  - "!demo/package-check.html"
+asar: true
+npmRebuild: false
+afterPack: build/after-pack.cjs
+fileAssociations:
+  - ext: ecmx
+    name: Edukors Common Document
+    mimeType: application/vnd.edukors.common+zip
+    role: Editor
+# No publish block: Common has no releases. An app adds its own (provider: github, its owner and repo) and names the
+# same repository in package.json ("edukors": { "updates": "owner/repo" }) for the update checks (desktop/updates.mjs).
+publish: null
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [universal]
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+dmg:
+  artifactName: Edukors-Common-${version}-mac.${ext}
+
+win:
+  target:
+    - target: appx
+      arch: [x64]
+# MSIX (electron-builder calls the target "appx"). Replace the identity with the one from Partner Center → Product
+# identity before publishing to the Store; the Store signs and updates the package.
+appx:
+  identityName: Edukors.EdukorsCommon
+  publisher: CN=Edukors
+  publisherDisplayName: Edukors
+  displayName: Edukors Common
+  applicationId: EdukorsCommon
+  backgroundColor: transparent
+  languages: [en-US, pt-BR, es-ES, zh-CN, hi-IN]
+  minVersion: 10.0.17763.0
+  maxVersionTested: 10.0.26100.0
+  artifactName: Edukors-Common-${version}-windows-${arch}.msix
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Office
+  executableName: edukors-common
+  synopsis: Shared foundation of the Edukors apps
+  maintainer: Edukors
+  artifactName: Edukors-Common-${version}-linux-${arch}.${ext}

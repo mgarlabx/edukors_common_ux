@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edukors package check</title>
+  <style>
+    body { max-width: 760px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 Arial, Helvetica, sans-serif; color: #263149; }
+    h1 { font-size: 20px; }
+    li { margin: 4px 0; }
+    .ok::marker { content: "✓ "; color: #1a7f4b; }
+    .bad::marker { content: "✗ "; color: #d93b3b; }
+    pre { padding: 10px; border-radius: 6px; background: #f6f7fb; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Document package check</h1>
+  <p>Writes a sample package with <code>src/package/package.js</code>, reads it back, and tries a few hostile inputs, using only this browser's built-in ZIP compression. No installation or network. The full test suite runs in Node: <code>node --test</code>.</p>
+  <ul id="results"></ul>
+  <pre id="listing"></pre>
+  <script src="../src/package/package.js"></script>
+  <script>
+    (async () => {
+      const P = EdukorsPackage, list = document.getElementById('results');
+      const report = (ok, text) => { const li = document.createElement('li'); li.className = ok ? 'ok' : 'bad'; li.textContent = text; list.append(li); };
+      const check = async (text, run) => { try { const result = await run(); report(result !== false, text); } catch (error) { report(false, `${text}: ${error.message}`); } };
+      const refuses = async (text, run, code) => { try { await run(); report(false, `${text}: was accepted`); } catch (error) { report(error instanceof P.PackageError && (!code || error.code === code), `${text}${error instanceof P.PackageError ? ` (${error.code})` : `: ${error.message}`}`); } };
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+      const doc = {
+        app: { name: 'common', version: 'v.26.11.01' },
+        main: { name: 'common/document.json', contentType: P.contentType('common', 'document'), content: { objects: [{ id: 1, text: 'Olá, 世界' }] }, relationships: [{ type: 'https://edukors.org/package/relationships/image', target: 'media/image1.png' }] },
+        parts: [{ name: 'common/media/image1.png', contentType: 'image/png', content: png }],
+        properties: { title: 'Untitled', language: 'pt-BR' }
+      };
+      let bytes;
+      await check('Writes a package', async () => { bytes = await P.write(doc); return bytes.length > 0; });
+      await check('Reads it back with the same content', async () => { const back = await P.read(bytes); return back.json('common/document.json').objects[0].text === 'Olá, 世界' && back.bytes('common/media/image1.png').length === png.length && back.properties.language === 'pt-BR' && back.orphans.length === 0; });
+      await refuses('Refuses a part name with ".."', () => P.write({ ...doc, parts: [{ name: 'a/../b.json', contentType: 'application/json', content: '' }] }), 'part-name');
+      await refuses('Refuses bytes that are not a ZIP', () => P.read(new Uint8Array([1, 2, 3])), 'zip');
+      const damaged = bytes.slice(); damaged[bytes.length >> 1] ^= 0xff;
+      await refuses('Refuses a damaged package', () => P.read(damaged));
+      const back = await P.read(bytes);
+      document.getElementById('listing').textContent = back.parts.map(part => `${part.name}\n    ${part.contentType}`).join('\n');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+{
+  "name": "edukors-common-ux",
+  "productName": "Edukors Common",
+  "version": "26.11.1",
+  "private": true,
+  "description": "Shared application foundation for EDUKORS apps. The browser demo needs no installation; only the AI runtime (src/ai/runtime), its development host, and the Electron host (desktop/) use these dependencies.",
+  "author": {
+    "name": "Edukors",
+    "url": "https://edukors.org"
+  },
+  "homepage": "https://github.com/mgarlabx/edukors_common_ux",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mgarlabx/edukors_common_ux.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "test": "node --test",
+    "dev": "node tools/dev-host.mjs",
+    "desktop": "electron .",
+    "package": "node tools/package.mjs",
+    "icons": "electron tools/raster-icons.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.287",
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "electron": "44.10.0",
+    "electron-builder": "26.17.0"
+  },
+  "main": "desktop/main.mjs"
+}

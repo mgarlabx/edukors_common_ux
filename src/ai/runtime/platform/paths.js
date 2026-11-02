@@ -1,0 +1,47 @@
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { join, posix, resolve, win32 } from "node:path";
+/**
+ * The per-OS-user EDUKORS data directory, shared by every EDUKORS application
+ * on this computer. Resolved by platform convention; `EDUKORS_AI_DATA_DIR`
+ * overrides it (tests, portable installs).
+ */
+export function defaultDataDir(env = process.env, platform = process.platform) {
+    const override = env.EDUKORS_AI_DATA_DIR;
+    if (override)
+        return resolve(override);
+    const home = env.HOME || env.USERPROFILE || homedir();
+    // The platform's own separators, whatever the platform this runs on.
+    const p = platform === "win32" ? win32 : posix;
+    if (platform === "darwin")
+        return p.join(home, "Library", "Application Support", "EDUKORS");
+    // Local, not roaming: account directories hold machine-bound provider state.
+    if (platform === "win32")
+        return p.join(env.LOCALAPPDATA || p.join(home, "AppData", "Local"), "EDUKORS");
+    return p.join(env.XDG_DATA_HOME && p.isAbsolute(env.XDG_DATA_HOME) ? env.XDG_DATA_HOME : p.join(home, ".local", "share"), "edukors");
+}
+/** Stable, filesystem-safe key for an arbitrary document identifier. */
+export const documentKey = (documentId) => createHash("sha256").update(documentId).digest("hex").slice(0, 24);
+export class DataPaths {
+    root;
+    /** Always absolute: provider processes run in other working directories. */
+    constructor(root) {
+        this.root = resolve(root);
+    }
+    get registryFile() {
+        return join(this.root, "ai", "registry.json");
+    }
+    get locksDir() {
+        return join(this.root, "ai", "locks");
+    }
+    /** Stored relative to the root in the registry, so the root may move. */
+    accountHomeRelative(accountId) {
+        return join("ai", "accounts", accountId);
+    }
+    resolve(relative) {
+        return join(this.root, relative);
+    }
+    sessionDir(appId, documentId, accountId) {
+        return join(this.root, "ai", "sessions", appId, documentKey(documentId), accountId);
+    }
+}
