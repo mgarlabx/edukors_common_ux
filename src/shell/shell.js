@@ -49,7 +49,7 @@ for (const [key, label, icon] of [['cut', 'Cut', 'graph-Cut'], ['copy', 'Copy', 
 for (const button of document.querySelectorAll('#edit-actions .tool, #insert-actions .tool')) button.setAttribute('aria-disabled', 'true');
 addButton('utility-actions', 'settings', 'Settings');
 addButton('utility-actions', 'help', 'Help');
-addButton('panel-actions', 'sidebar', 'Sidebar', true, 'slides-panel');
+if (EdukorsAppConfig.sidebar !== false) addButton('panel-actions', 'sidebar', 'Sidebar', true, 'slides-panel');
 addButton('panel-actions', 'assistant', 'AI assistant', true, 'graph-Ai');
 // The window title and titlebar show only the application name.
 document.title = EdukorsAppConfig.name;

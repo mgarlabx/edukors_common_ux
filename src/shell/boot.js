@@ -17,6 +17,14 @@
   const logo = new URL('assets/edukors-logo.svg', shell).href;
   // The workspace shows the app's name under the logo, without "Edukors" (Common, Text Editor, …).
   const mark = config.watermark || String(config.name || '').replace(/^Edukors\s+/i, '');
+  // The left sidebar is the app's (Common shows a placeholder in it); an app without one sets sidebar: false.
+  const sidebar = config.sidebar === false ? '' : `
+      <aside class="side-panel side-panel-left" id="sidebar-panel" aria-labelledby="sidebar-title" inert>
+        <div class="panel-inner">
+        <header class="panel-header"><h2 id="sidebar-title">Sidebar</h2><button class="tool panel-close" type="button" data-close-panel="sidebar" aria-label="Close"><span class="tooltip" aria-hidden="true">Close</span></button></header>
+        <p class="panel-placeholder" id="sidebar-placeholder">Sidebar. The application supplies its content here.</p>
+        </div>
+      </aside>`;
 
   const style = document.createElement('link');
   style.rel = 'stylesheet';
@@ -51,13 +59,7 @@
       </div>
       <div class="context-slot" id="context-slot" inert><div class="context-clip"><section class="context-toolbar" id="context-toolbar" aria-label="Contextual toolbar"></section></div></div>
       <div class="document-body">
-      <aside class="side-panel side-panel-left" id="sidebar-panel" aria-labelledby="sidebar-title" inert>
-        <div class="panel-inner">
-        <header class="panel-header"><h2 id="sidebar-title">Sidebar</h2><button class="tool panel-close" type="button" data-close-panel="sidebar" aria-label="Close"><span class="tooltip" aria-hidden="true">Close</span></button></header>
-        <p class="panel-placeholder" id="sidebar-placeholder">Sidebar. The application supplies its content here.</p>
-        </div>
-      </aside>
-      <main class="workspace" aria-label="No documents open">
+${sidebar}      <main class="workspace" aria-label="No documents open">
         <div class="watermark" aria-hidden="true">
           <img src="${logo}" alt="">
           <p>${esc(mark)}</p>

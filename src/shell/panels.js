@@ -1,12 +1,13 @@
 // Right-aligned panel toggles: the sidebar (application content) and the AI assistant.
 // They are available only while a document is open, and both start closed. The sidebar opens on the left of the
-// workspace and the assistant on the right; both can be open at once.
+// workspace and the assistant on the right; both can be open at once. An app without a sidebar (EdukorsAppConfig.sidebar:
+// false) has neither the panel nor its toggle.
 // The assistant's content (conversation, composer, account and model) belongs to src/ai/ui/ai-assistant.js.
 (() => {
-  const panels = {
+  const panels = Object.fromEntries(Object.entries({
     sidebar: document.getElementById('sidebar-panel'),
     assistant: document.getElementById('assistant-panel-side')
-  };
+  }).filter(([, panel]) => panel));
   const open = { sidebar: false, assistant: false };
   let documentOpen = false;
 
@@ -29,8 +30,10 @@
       panel.inert = !visible;
       toggle(key).setAttribute('aria-pressed', String(open[key]));
     }
-    document.getElementById('sidebar-title').textContent = message('sidebar');
-    document.getElementById('sidebar-placeholder').textContent = message('sidebarPlaceholder');
+    if (panels.sidebar) {
+      document.getElementById('sidebar-title').textContent = message('sidebar');
+      document.getElementById('sidebar-placeholder').textContent = message('sidebarPlaceholder');
+    }
     document.getElementById('assistant-panel-label').textContent = message('assistant');
     for (const button of document.querySelectorAll('[data-close-panel]')) {
       button.setAttribute('aria-label', message('close'));
