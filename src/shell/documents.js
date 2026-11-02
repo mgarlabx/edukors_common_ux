@@ -48,7 +48,7 @@ globalThis.EdukorsDocuments = {};
     const active = documents.find(doc => doc.id === activeId);
     // Edit commands (availability and actions) are handled by the sample document (sample-document.js).
     document.getElementById('edit-actions').setAttribute('aria-label', message('edit'));
-    document.getElementById('insert-actions').setAttribute('aria-label', message('insert'));
+    document.getElementById('insert-actions')?.setAttribute('aria-label', message('insert')); // absent in apps without a canvas
     for (const key of ['export', 'reveal']) {
       const button = document.querySelector(`[data-command="${key}"]`);
       const disabled = !!active && !active.saved;
