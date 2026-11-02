@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { AiCliError } from "../errors.js";
+import { AiError } from "../errors.js";
 /**
  * Process lifecycle for provider CLIs: bounded output, timeouts and reliable
  * termination of the whole process tree.
@@ -132,7 +132,7 @@ export async function runCommand(spec) {
         proc = new ManagedProcess(spec);
     }
     catch (e) {
-        throw new AiCliError("PROVIDER_START_FAILED", `could not start ${spec.file}`, { cause: e });
+        throw new AiError("PROVIDER_START_FAILED", `could not start ${spec.file}`, { cause: e });
     }
     let stdout = "";
     proc.child.stdout.setEncoding("utf8").on("data", (chunk) => {
@@ -153,10 +153,10 @@ export async function runCommand(spec) {
     clearTimeout(timer);
     spec.signal?.removeEventListener("abort", onAbort);
     if (info.code === null && info.signal === null) {
-        throw new AiCliError("PROVIDER_START_FAILED", `could not start ${spec.file}`, { cause: await spawnError });
+        throw new AiError("PROVIDER_START_FAILED", `could not start ${spec.file}`, { cause: await spawnError });
     }
     if (spec.signal?.aborted)
-        throw new AiCliError("CANCELLED", "cancelled");
+        throw new AiError("CANCELLED", "cancelled");
     return { code: info.code, stdout, stderr: proc.stderr.toString(), timedOut };
 }
 /**

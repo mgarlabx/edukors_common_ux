@@ -19,7 +19,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { createAiCli } from "../src/ai/runtime/engine.js";
+import { createAiRuntime } from "../src/ai/runtime/engine.js";
 import { bundledProviders } from "../src/ai/runtime/providers.js";
 import { defaultDataDir } from "../src/ai/runtime/platform/paths.js";
 import { createHostDispatcher } from "../src/ai/runtime/host/dispatcher.js";
@@ -76,7 +76,7 @@ export function startDesktopApp(options) {
   function attach(contents) {
     const previous = sessions.get(contents.id);
     if (previous) void previous.close();
-    const ai = createAiCli({
+    const ai = createAiRuntime({
       appId: APP_ID,
       providers: bundledProviders({ fake: !SHARED }),
       dataDir: DATA_DIR,

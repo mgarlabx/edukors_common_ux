@@ -6,7 +6,7 @@ Every EDUKORS app shares one AI experience: choose a service, connect an account
 
 | Layer | Where | Runs in |
 | --- | --- | --- |
-| Runtime: CLIs, shared accounts, sessions, MCP, skills, events, errors | `src/ai/runtime` (from `edukors_ai_cli` 0.2.2; see its README) | Node.js |
+| Runtime: CLIs, shared accounts, sessions, MCP, skills, events, errors | `src/ai/runtime` (see its README) | Node.js |
 | Host protocol: requests, events, tool calls, MCP authorization | `src/ai/runtime/host/dispatcher.js` | Node.js |
 | App-host requests: this app's AI settings (instructions, MCP, default account, model, effort, mode), MCP test, skills (list, add from ZIP, delete), provider catalog | `src/ai/host/app-methods.js` | Node.js |
 | Transport | `desktop/main.mjs` + `desktop/preload.cjs` (Electron IPC); `tools/dev-host.mjs` (HTTP + server-sent events, for a browser) | Node.js |
@@ -31,7 +31,7 @@ In **Review before applying** mode, creating or editing a file and running a com
 
 ## Settings → AI assistant
 
-Same sections, names, and order in every app (the rule from `edukors_ai_cli/docs/roadmap.md`):
+Same sections, names, and order in every app:
 
 Accounts, MCP servers, and skills share one pattern: a + in the heading adds, a list with one line per item, and a trash icon on the right of each line removes.
 
@@ -135,8 +135,4 @@ Claude and Codex accounts sign in through the services' own pages and need the u
 
 ## Tests
 
-`npm test` (or `node --test`) runs the runtime's suites (`tests/ai`), the package tests, and the conversation-package tests (135 in all). They use fake CLIs and need no account. The screens were checked in headless Chrome (Playwright from `edukors_slides_editor`): every flow above with the fake service, dark theme, Portuguese, Chinese, 150–200% font size, and the page opened as a file.
-
-## Next
-
-- Port later `edukors_ai_cli` fixes deliberately (see `src/ai/runtime/README.md`).
+`npm test` (or `node --test`) runs the runtime's suites (`tests/ai`), the package tests, and the conversation-package tests (145 in all). They use fake CLIs and need no account. The screens were checked in headless Chrome (Playwright from `edukors_slides_editor`): every flow above with the fake service, dark theme, Portuguese, Chinese, 150–200% font size, and the page opened as a file.

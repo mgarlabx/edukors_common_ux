@@ -28,7 +28,7 @@ import { stat } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { createAiCli } from "../src/ai/runtime/engine.js";
+import { createAiRuntime } from "../src/ai/runtime/engine.js";
 import { bundledProviders } from "../src/ai/runtime/providers.js";
 import { defaultDataDir } from "../src/ai/runtime/platform/paths.js";
 import { createHostDispatcher } from "../src/ai/runtime/host/dispatcher.js";
@@ -68,7 +68,7 @@ function log(level, message) {
 
 function openConnection(res) {
   const id = String(nextConnection++);
-  const ai = createAiCli({
+  const ai = createAiRuntime({
     appId: APP_ID,
     providers: bundledProviders({ fake: !SHARED }),
     dataDir: DATA_DIR,

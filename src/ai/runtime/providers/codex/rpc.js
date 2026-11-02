@@ -1,4 +1,4 @@
-import { AiCliError } from "../../errors.js";
+import { AiError } from "../../errors.js";
 import { readLines } from "../../platform/process.js";
 export function attachRpc(proc, handlers, log) {
     const pending = new Map();
@@ -7,7 +7,7 @@ export function attachRpc(proc, handlers, log) {
         for (const [id, waiting] of pending) {
             pending.delete(id);
             clearTimeout(waiting.timer);
-            waiting.reject(new AiCliError("PROVIDER_CRASHED", reason, { meta: { method: waiting.method } }));
+            waiting.reject(new AiError("PROVIDER_CRASHED", reason, { meta: { method: waiting.method } }));
         }
     };
     void proc.exited.then(() => fail("the Codex app server stopped"));
@@ -43,7 +43,7 @@ export function attachRpc(proc, handlers, log) {
             pending.delete(msg.id);
             clearTimeout(waiting.timer);
             if (msg.error)
-                waiting.reject(new AiCliError("PROVIDER_ERROR", String(msg.error.message ?? "Codex refused the request"), { meta: { method: waiting.method, rpcCode: msg.error.code } }));
+                waiting.reject(new AiError("PROVIDER_ERROR", String(msg.error.message ?? "Codex refused the request"), { meta: { method: waiting.method, rpcCode: msg.error.code } }));
             else
                 waiting.resolve(msg.result ?? null);
             return;
@@ -57,13 +57,13 @@ export function attachRpc(proc, handlers, log) {
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     pending.delete(id);
-                    reject(new AiCliError("TIMEOUT", `Codex did not answer ${method} in time`, { meta: { method } }));
+                    reject(new AiError("TIMEOUT", `Codex did not answer ${method} in time`, { meta: { method } }));
                 }, timeoutMs);
                 pending.set(id, { resolve, reject, timer, method });
                 if (!proc.writeLine({ id, method, params })) {
                     pending.delete(id);
                     clearTimeout(timer);
-                    reject(new AiCliError("PROVIDER_CRASHED", "the Codex app server is not running", { meta: { method } }));
+                    reject(new AiError("PROVIDER_CRASHED", "the Codex app server is not running", { meta: { method } }));
                 }
             });
         },

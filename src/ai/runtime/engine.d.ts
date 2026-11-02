@@ -6,7 +6,7 @@ import type { AccountStatus, Capabilities, Detection, LoginPrompt, ModelInfo, Pr
 import { AiSession, type Authorizer } from "./session.js";
 import { type ToolDefinition } from "./tools.js";
 import { type WorkspaceOptions } from "./workspace.js";
-export interface AiCliOptions {
+export interface AiRuntimeOptions {
     /** Identifies the application, e.g. `slides` or `graph`. Namespaces sessions and logs. */
     appId: string;
     providers: ProviderAdapter[];
@@ -75,7 +75,7 @@ export interface DiagnosticReport {
     }[];
     entries: DiagnosticEntry[];
 }
-export declare class AiCli {
+export declare class AiRuntime {
     private readonly options;
     readonly appId: string;
     readonly paths: DataPaths;
@@ -91,7 +91,7 @@ export declare class AiCli {
     private readonly log;
     private seq;
     private disposed;
-    constructor(options: AiCliOptions);
+    constructor(options: AiRuntimeOptions);
     providers(): {
         id: string;
         displayName: string;
@@ -161,4 +161,4 @@ export declare class AiCli {
     private unsupported;
     private publish;
 }
-export declare const createAiCli: (options: AiCliOptions) => AiCli;
+export declare const createAiRuntime: (options: AiRuntimeOptions) => AiRuntime;

@@ -3,7 +3,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
-import { AiCliError } from "../errors.js";
+import { AiError } from "../errors.js";
 import { buildEnv } from "../platform/env.js";
 import { TOOL_SERVER_NAME } from "./toolServer.js";
 import { VERSION } from "../version.js";
@@ -73,7 +73,7 @@ export class ExternalServers {
     async call(server, tool, args) {
         const connection = this.connections.get(server);
         if (!connection)
-            throw new AiCliError("TOOL_NOT_FOUND", `the MCP server "${server}" is not connected`);
+            throw new AiError("TOOL_NOT_FOUND", `the MCP server "${server}" is not connected`);
         const result = await connection.client.callTool({ name: tool, arguments: args }, undefined, { timeout: connection.timeoutMs });
         const parts = Array.isArray(result.content) ? result.content : [];
         const text = parts.map((c) => (c.type === "text" ? (c.text ?? "") : `[${c.type ?? "content"}]`)).join("\n");
@@ -85,7 +85,7 @@ export class ExternalServers {
         await Promise.all(all.map((c) => c.client.close().catch(() => undefined)));
     }
     async open(name, spec) {
-        const client = new Client({ name: "edukors-ai-cli", version: VERSION });
+        const client = new Client({ name: "edukors-common", version: VERSION });
         try {
             let transport;
             if (!("command" in spec)) {

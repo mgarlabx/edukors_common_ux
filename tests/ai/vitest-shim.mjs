@@ -1,6 +1,6 @@
-// The small part of the vitest API that the AI runtime tests use, on top of node:test and
-// node:assert. The tests were written for vitest in edukors_ai_cli; this keeps them unchanged
-// while Common runs everything with `node --test` and no test dependency.
+// The small part of the vitest API (describe, it, expect, vi) that the AI runtime tests use, on
+// top of node:test and node:assert, so Common runs every test with `node --test` and no test
+// dependency.
 import assert from "node:assert/strict";
 import * as nodeTest from "node:test";
 

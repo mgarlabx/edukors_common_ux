@@ -1,17 +1,16 @@
 import { PassThrough } from "node:stream";
 import { createInterface } from "node:readline";
 import { describe, expect, it } from "./vitest-shim.mjs";
-import { createAiCli } from "../../src/ai/runtime/index.js";
-import { runStdioHost } from "../../src/ai/runtime/host/stdio.js";
+import { createAiRuntime } from "../../src/ai/runtime/index.js";
 import { createFakeProvider } from "../../src/ai/runtime/testing/index.js";
 import { realpath } from "node:fs/promises";
-import { tempDir, until } from "./helpers.mjs";
+import { pipeHost, tempDir, until } from "./helpers.mjs";
 /** Plays the application's side of the pipe. */
 async function harness() {
-    const ai = createAiCli({ appId: "graph", dataDir: await tempDir(), providers: [createFakeProvider()], interruptGraceMs: 400 });
+    const ai = createAiRuntime({ appId: "graph", dataDir: await tempDir(), providers: [createFakeProvider()], interruptGraceMs: 400 });
     const input = new PassThrough();
     const output = new PassThrough();
-    const host = runStdioHost({ ai, input, output });
+    const host = pipeHost({ ai, input, output });
     const received = [];
     const waiting = new Map();
     let toolHandler = () => ({ content: "" });
@@ -42,7 +41,7 @@ async function harness() {
         },
     };
 }
-describe("stdio host", () => {
+describe("host protocol", () => {
     it("runs the whole flow over the pipe, tools included", async () => {
         const h = await harness();
         try {

@@ -54,14 +54,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./vitest-shim.mjs";
 import { z } from "zod";
-import { createAiCli, createClaudeProvider, defineTool } from "../../src/ai/runtime/index.js";
+import { createAiRuntime, createClaudeProvider, defineTool } from "../../src/ai/runtime/index.js";
 import { interpret } from "../../src/ai/runtime/providers/claude/events.js";
 import { fakeClaudeSdk } from "./fakeClaudeSdk.mjs";
 import { tempDir, textOf, until } from "./helpers.mjs";
 const FAKE_CLAUDE = fileURLToPath(new URL("../../src/ai/runtime/fixtures/fake-claude.mjs", import.meta.url));
 async function setup(options = {}) {
     const fake = fakeClaudeSdk();
-    const ai = createAiCli({ appId: "graph", dataDir: await tempDir(), interruptGraceMs: 400, providers: [createClaudeProvider({ executable: FAKE_CLAUDE, loadSdk: fake.loadSdk, ...options })] });
+    const ai = createAiRuntime({ appId: "graph", dataDir: await tempDir(), interruptGraceMs: 400, providers: [createClaudeProvider({ executable: FAKE_CLAUDE, loadSdk: fake.loadSdk, ...options })] });
     const events = [];
     ai.onEvent((e) => events.push(e));
     const connected = async (label = "Personal") => {

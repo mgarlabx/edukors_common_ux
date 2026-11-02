@@ -54,7 +54,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./vitest-shim.mjs";
-import { createAiCli, createClaudeProvider, createCodexProvider } from "../../src/ai/runtime/index.js";
+import { createAiRuntime, createClaudeProvider, createCodexProvider } from "../../src/ai/runtime/index.js";
 import { fakeClaudeSdk } from "./fakeClaudeSdk.mjs";
 import { createFakeProvider } from "../../src/ai/runtime/testing/index.js";
 import { tempDir, textOf } from "./helpers.mjs";
@@ -75,7 +75,7 @@ const providers = [
 ];
 async function setup(id) {
     const made = providers.find((p) => p.id === id).make();
-    const ai = createAiCli({ appId: "graph", dataDir: await tempDir(), interruptGraceMs: 400, providers: [made.adapter] });
+    const ai = createAiRuntime({ appId: "graph", dataDir: await tempDir(), interruptGraceMs: 400, providers: [made.adapter] });
     const events = [];
     ai.onEvent((e) => events.push(e));
     const account = await ai.createAccount({ providerId: id });
@@ -311,17 +311,17 @@ describe("skill files", () => {
         expect(() => readSkillFile(dir, "nobody")).toThrow('there is no skill named "nobody"');
     });
 });
-describe("over the stdio host", () => {
+describe("over the host protocol", () => {
     it("asks the application to authorize each call to a user's server", async () => {
         const env_9 = { stack: [], error: void 0, hasError: false };
         try {
             const { PassThrough } = await import("node:stream");
             const { createInterface } = await import("node:readline");
-            const { runStdioHost } = await import("../../src/ai/runtime/host/stdio.js");
+            const { pipeHost } = await import("./helpers.mjs");
             const s = __addDisposableResource(env_9, await setup("codex"), true);
             const input = new PassThrough();
             const output = new PassThrough();
-            const host = runStdioHost({ ai: s.ai, input, output });
+            const host = pipeHost({ ai: s.ai, input, output });
             const waiting = new Map();
             const authorizations = [];
             createInterface({ input: output }).on("line", (line) => {

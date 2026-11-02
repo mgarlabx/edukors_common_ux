@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { AiCliError, toAiCliError } from "../errors.js";
+import { AiError, toAiError } from "../errors.js";
 import { VERSION } from "../version.js";
 import { isAbsolute } from "node:path";
 import { listSkills } from "../skills.js";
 /**
  * The application-host protocol, independent of its transport. One dispatcher
- * serves one application window: the stdio transport (stdio.js) writes each
- * message as a JSON line, the development host (tools/dev-host.mjs) sends them
- * over HTTP and server-sent events, and the Electron host will send them over IPC.
+ * serves one application window: the development host (tools/dev-host.mjs) sends
+ * the messages over HTTP and server-sent events, the Electron host
+ * (desktop/host.mjs) over IPC, and the tests over a pair of streams.
  *
  *   app → host   { id, method, params }          a request
  *   host → app   { id, result } | { id, error }  its answer
@@ -27,9 +27,6 @@ import { listSkills } from "../skills.js";
  * `methods` adds requests that belong to the embedding host rather than to the
  * library (for example, opening the skills folder): name → async (params) => result.
  * They cannot replace the protocol's own methods.
- *
- * Adapted from edukors_ai_cli 0.2.2 (src/host/stdio.ts), where the dispatcher and
- * the pipe were one function.
  */
 export const HOST_PROTOCOL_VERSION = 1;
 const ToolSpecSchema = z.object({ name: z.string(), description: z.string(), inputSchema: z.record(z.string(), z.unknown()) });
@@ -115,13 +112,13 @@ export function createHostDispatcher({ ai, send, toolTimeoutMs = 120_000, method
     const session = (id) => {
         const found = sessions.get(id);
         if (!found)
-            throw new AiCliError("SESSION_CLOSED", "no such session", { meta: { sessionId: id } });
+            throw new AiError("SESSION_CLOSED", "no such session", { meta: { sessionId: id } });
         return found;
     };
     async function handle(id, method, raw) {
         const parsed = METHODS[method].safeParse(raw ?? {});
         if (!parsed.success)
-            throw new AiCliError("INVALID_ARGUMENT", z.prettifyError(parsed.error), { meta: { method } });
+            throw new AiError("INVALID_ARGUMENT", z.prettifyError(parsed.error), { meta: { method } });
         const p = parsed.data;
         switch (method) {
             case "providers.list":
@@ -205,7 +202,7 @@ export function createHostDispatcher({ ai, send, toolTimeoutMs = 120_000, method
                 return ai.diagnosticReport();
             case "skills.list":
                 if (!isAbsolute(p.dir))
-                    throw new AiCliError("INVALID_ARGUMENT", "dir must be an absolute path");
+                    throw new AiError("INVALID_ARGUMENT", "dir must be an absolute path");
                 return listSkills(p.dir);
             case "cancel":
                 aborts.get(p.requestId)?.abort();
@@ -236,11 +233,11 @@ export function createHostDispatcher({ ai, send, toolTimeoutMs = 120_000, method
         const own = Boolean(method) && method in METHODS;
         const added = Boolean(method) && !own && Object.hasOwn(extra, method);
         if (!own && !added) {
-            write({ id, error: new AiCliError("INVALID_ARGUMENT", `unknown method: ${method}`).toJSON() });
+            write({ id, error: new AiError("INVALID_ARGUMENT", `unknown method: ${method}`).toJSON() });
             return;
         }
         const work = (own ? handle(id, method, message.params) : Promise.resolve().then(() => extra[method](message.params ?? {})))
-            .then((result) => write({ id, result: result ?? null }), (e) => write({ id, error: toAiCliError(e).toJSON() }));
+            .then((result) => write({ id, result: result ?? null }), (e) => write({ id, error: toAiError(e).toJSON() }));
         inFlight.add(work);
         void work.finally(() => inFlight.delete(work));
     }

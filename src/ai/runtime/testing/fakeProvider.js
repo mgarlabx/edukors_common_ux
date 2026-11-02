@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { AiCliError } from "../errors.js";
+import { AiError } from "../errors.js";
 import { buildEnv } from "../platform/env.js";
 import { compareVersions } from "../platform/discovery.js";
 import { ManagedProcess, readLines, runCommand } from "../platform/process.js";
@@ -35,20 +35,20 @@ function parseJson(schema, text, what) {
         value = JSON.parse(line);
     }
     catch (e) {
-        throw new AiCliError("PROVIDER_PROTOCOL", `${what}: output is not JSON`, { cause: e });
+        throw new AiError("PROVIDER_PROTOCOL", `${what}: output is not JSON`, { cause: e });
     }
     const parsed = schema.safeParse(value);
     if (!parsed.success)
-        throw new AiCliError("PROVIDER_PROTOCOL", `${what}: unexpected output`, { meta: { issue: z.prettifyError(parsed.error) } });
+        throw new AiError("PROVIDER_PROTOCOL", `${what}: unexpected output`, { meta: { issue: z.prettifyError(parsed.error) } });
     return parsed.data;
 }
 const errorFromProvider = (code, message) => code === "rate_limited"
-    ? new AiCliError("RATE_LIMITED", message)
+    ? new AiError("RATE_LIMITED", message)
     : code === "auth"
-        ? new AiCliError("ACCOUNT_DISCONNECTED", message)
+        ? new AiError("ACCOUNT_DISCONNECTED", message)
         : code === "expired"
-            ? new AiCliError("ACCOUNT_EXPIRED", message)
-            : new AiCliError("PROVIDER_ERROR", message, { meta: { providerCode: code } });
+            ? new AiError("ACCOUNT_EXPIRED", message)
+            : new AiError("PROVIDER_ERROR", message, { meta: { providerCode: code } });
 export function createFakeProvider(options = {}) {
     const id = options.id ?? "fake";
     const command = options.command ?? { file: process.execPath, args: [FAKE_CLI_PATH] };
@@ -89,15 +89,15 @@ export function createFakeProvider(options = {}) {
         async connectAccount(context) {
             const result = await run(context, ["login", "--label", context.label], 120_000);
             if (result.timedOut)
-                throw new AiCliError("TIMEOUT", "sign-in did not finish in time");
+                throw new AiError("TIMEOUT", "sign-in did not finish in time");
             if (result.code !== 0)
-                throw new AiCliError("LOGIN_FAILED", "sign-in failed", { meta: { detail: result.stderr.trim().slice(0, 300) } });
+                throw new AiError("LOGIN_FAILED", "sign-in failed", { meta: { detail: result.stderr.trim().slice(0, 300) } });
             return this.accountStatus(context);
         },
         async accountStatus(context) {
             const result = await run(context, ["status"]);
             if (result.code !== 0)
-                throw new AiCliError("PROVIDER_ERROR", "status check failed", { meta: { detail: result.stderr.trim().slice(0, 300) } });
+                throw new AiError("PROVIDER_ERROR", "status check failed", { meta: { detail: result.stderr.trim().slice(0, 300) } });
             const status = parseJson(StatusOutput, result.stdout, "status");
             if (!status.signedIn)
                 return { state: "disconnected" };
@@ -106,12 +106,12 @@ export function createFakeProvider(options = {}) {
         async logout(context) {
             const result = await run(context, ["logout"]);
             if (result.code !== 0)
-                throw new AiCliError("PROVIDER_ERROR", "sign-out failed");
+                throw new AiError("PROVIDER_ERROR", "sign-out failed");
         },
         async listModels(context) {
             const result = await run(context, ["models"]);
             if (result.code !== 0)
-                throw new AiCliError("PROVIDER_ERROR", "could not list models");
+                throw new AiError("PROVIDER_ERROR", "could not list models");
             return parseJson(ModelsOutput, result.stdout, "models").models;
         },
         openSession: (context, hooks) => FakeSession.open(command, env(context), context, hooks, options.startupTimeoutMs ?? 10_000),
@@ -146,8 +146,8 @@ class FakeSession {
                 else if (msg.type === "fatal")
                     reject(errorFromProvider(msg.code, msg.message));
             };
-            void proc.exited.then((info) => reject(new AiCliError("PROVIDER_START_FAILED", "the provider exited during startup", { meta: { code: info.code, stderr: proc.stderr.toString().slice(-300) } })));
-            setTimeout(() => reject(new AiCliError("TIMEOUT", "the provider did not start in time")), startupTimeoutMs).unref();
+            void proc.exited.then((info) => reject(new AiError("PROVIDER_START_FAILED", "the provider exited during startup", { meta: { code: info.code, stderr: proc.stderr.toString().slice(-300) } })));
+            setTimeout(() => reject(new AiError("TIMEOUT", "the provider did not start in time")), startupTimeoutMs).unref();
         });
         readLines(proc.child.stdout, (line) => session.onLine(line), { onOverflow: () => context.log.warn("discarded an oversized line") });
         void proc.exited.then((info) => session.onExit(info.code, info.signal));
@@ -173,7 +173,7 @@ class FakeSession {
     onStartup = null;
     send(input, sink) {
         if (this.pending)
-            return Promise.reject(new AiCliError("SESSION_BUSY", "a turn is already running"));
+            return Promise.reject(new AiError("SESSION_BUSY", "a turn is already running"));
         const turnId = input.requestId;
         this.sinks.set(turnId, sink);
         if (this.sinks.size > 8)
@@ -183,7 +183,7 @@ class FakeSession {
             const text = input.context ? `${input.text}\n\n<document>\n${input.context}\n</document>` : input.text;
             if (!this.proc.writeLine({ type: "turn", turnId, text })) {
                 this.pending = null;
-                reject(new AiCliError("PROVIDER_CRASHED", "the provider is not running"));
+                reject(new AiError("PROVIDER_CRASHED", "the provider is not running"));
             }
         });
     }
@@ -200,7 +200,7 @@ class FakeSession {
         this.closing = true;
         this.proc.writeLine({ type: "exit" });
         await this.proc.terminate(1_000);
-        this.settle((p) => p.reject(new AiCliError("SESSION_CLOSED", "the session was closed")));
+        this.settle((p) => p.reject(new AiError("SESSION_CLOSED", "the session was closed")));
     }
     settle(fn) {
         const pending = this.pending;
@@ -273,7 +273,7 @@ class FakeSession {
         // During startup, `open` reports the failure itself.
         if (this.closing || this.onStartup)
             return;
-        const error = new AiCliError("PROVIDER_CRASHED", "the provider stopped unexpectedly", { meta: { code, signal, stderr: this.proc.stderr.toString().slice(-300) } });
+        const error = new AiError("PROVIDER_CRASHED", "the provider stopped unexpectedly", { meta: { code, signal, stderr: this.proc.stderr.toString().slice(-300) } });
         this.hooks.exited(error);
         this.settle((p) => p.reject(error));
     }

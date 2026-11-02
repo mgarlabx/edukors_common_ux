@@ -33,13 +33,13 @@ export const ERROR_CODES = [
 ];
 /** Codes where trying again later, without user action, can succeed. */
 const RETRYABLE = new Set(["PROVIDER_CRASHED", "RATE_LIMITED", "TIMEOUT", "REGISTRY_LOCKED", "SESSION_BUSY"]);
-export class AiCliError extends Error {
+export class AiError extends Error {
     code;
     meta;
     retryable;
     constructor(code, message, options = {}) {
         super(message, options.cause === undefined ? undefined : { cause: options.cause });
-        this.name = "AiCliError";
+        this.name = "AiError";
         this.code = code;
         this.meta = options.meta;
         this.retryable = options.retryable ?? RETRYABLE.has(code);
@@ -48,11 +48,11 @@ export class AiCliError extends Error {
         return { code: this.code, message: this.message, retryable: this.retryable, ...(this.meta ? { meta: this.meta } : {}) };
     }
 }
-export const isAiCliError = (value) => value instanceof AiCliError;
-/** Wraps anything thrown into an AiCliError, keeping the original as the cause. */
-export function toAiCliError(value, fallback = "INTERNAL") {
-    if (value instanceof AiCliError)
+export const isAiError = (value) => value instanceof AiError;
+/** Wraps anything thrown into an AiError, keeping the original as the cause. */
+export function toAiError(value, fallback = "INTERNAL") {
+    if (value instanceof AiError)
         return value;
     const message = value instanceof Error ? value.message : String(value);
-    return new AiCliError(fallback, message, { cause: value });
+    return new AiError(fallback, message, { cause: value });
 }

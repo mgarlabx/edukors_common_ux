@@ -1,4 +1,4 @@
-import { AiCliError } from "../../errors.js";
+import { AiError } from "../../errors.js";
 import { fromWindows } from "../../events.js";
 /** Claude Code's error names on a message, as stable codes. */
 export function claudeError(name, detail) {
@@ -6,14 +6,14 @@ export function claudeError(name, detail) {
     switch (name) {
         case "authentication_failed":
         case "oauth_org_not_allowed":
-            return new AiCliError("ACCOUNT_EXPIRED", "Claude needs to be signed in again", { meta });
+            return new AiError("ACCOUNT_EXPIRED", "Claude needs to be signed in again", { meta });
         case "rate_limit":
-            return new AiCliError("RATE_LIMITED", "Claude's usage limit was reached", { meta });
+            return new AiError("RATE_LIMITED", "Claude's usage limit was reached", { meta });
         case "overloaded":
         case "server_error":
-            return new AiCliError("PROVIDER_ERROR", "Claude is temporarily unavailable", { meta, retryable: true });
+            return new AiError("PROVIDER_ERROR", "Claude is temporarily unavailable", { meta, retryable: true });
         default:
-            return new AiCliError("PROVIDER_ERROR", "Claude could not complete the request", { meta });
+            return new AiError("PROVIDER_ERROR", "Claude could not complete the request", { meta });
     }
 }
 const WEB_TOOLS = new Set(["WebSearch", "WebFetch"]);
@@ -79,7 +79,7 @@ export function interpret(msg) {
                 actions.push({ kind: "end", outcome: "cancelled" });
             else {
                 const detail = "errors" in msg ? msg.errors.join("\n") : msg.result;
-                actions.push({ kind: "fail", error: new AiCliError("PROVIDER_ERROR", "Claude could not complete the request", { meta: { providerCode: msg.subtype, detail: detail.slice(0, 300) } }) });
+                actions.push({ kind: "fail", error: new AiError("PROVIDER_ERROR", "Claude could not complete the request", { meta: { providerCode: msg.subtype, detail: detail.slice(0, 300) } }) });
             }
             return actions;
         }

@@ -55,12 +55,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./vitest-shim.mjs";
 import { z } from "zod";
-import { createAiCli, createCodexProvider, defineTool, Diagnostics, startToolBridge } from "../../src/ai/runtime/index.js";
+import { createAiRuntime, createCodexProvider, defineTool, Diagnostics, startToolBridge } from "../../src/ai/runtime/index.js";
 import { codexError, codexLimits } from "../../src/ai/runtime/providers/codex/adapter.js";
 import { tempDir, textOf, until } from "./helpers.mjs";
 const FAKE_CODEX = fileURLToPath(new URL("../../src/ai/runtime/fixtures/fake-codex.mjs", import.meta.url));
 async function setup(options = {}) {
-    const ai = createAiCli({ appId: "slides", dataDir: await tempDir(), interruptGraceMs: 400, providers: [createCodexProvider({ executable: FAKE_CODEX, ...options })] });
+    const ai = createAiRuntime({ appId: "slides", dataDir: await tempDir(), interruptGraceMs: 400, providers: [createCodexProvider({ executable: FAKE_CODEX, ...options })] });
     const events = [];
     ai.onEvent((e) => events.push(e));
     const connected = async (label = "Personal") => {

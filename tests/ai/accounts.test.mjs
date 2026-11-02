@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "./vitest-shim.mjs";
-import { createAiCli } from "../../src/ai/runtime/index.js";
+import { createAiRuntime } from "../../src/ai/runtime/index.js";
 import { createFakeProvider } from "../../src/ai/runtime/testing/index.js";
 import { connectedAccount, setup, tempDir } from "./helpers.mjs";
 describe("providers", () => {
@@ -79,8 +79,8 @@ describe("accounts", () => {
     });
     it("shares accounts between two applications, but not sessions", async () => {
         const dataDir = await tempDir();
-        const slides = createAiCli({ appId: "slides", dataDir, providers: [createFakeProvider()] });
-        const graph = createAiCli({ appId: "graph", dataDir, providers: [createFakeProvider()] });
+        const slides = createAiRuntime({ appId: "slides", dataDir, providers: [createFakeProvider()] });
+        const graph = createAiRuntime({ appId: "graph", dataDir, providers: [createFakeProvider()] });
         try {
             const account = await connectedAccount(slides, "Shared");
             expect((await graph.listAccounts()).map((a) => a.label)).toEqual(["Shared"]);
@@ -101,7 +101,7 @@ describe("accounts", () => {
     });
     it("lists accounts of providers this application does not know", async () => {
         const dataDir = await tempDir();
-        const other = createAiCli({ appId: "other", dataDir, providers: [createFakeProvider({ id: "fake2" })] });
+        const other = createAiRuntime({ appId: "other", dataDir, providers: [createFakeProvider({ id: "fake2" })] });
         await other.createAccount({ providerId: "fake2", label: "Elsewhere" });
         const { ai } = await setup({ ai: { dataDir } });
         expect(await ai.listAccounts()).toEqual([expect.objectContaining({ label: "Elsewhere", supported: false })]);

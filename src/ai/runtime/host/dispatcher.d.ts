@@ -1,9 +1,9 @@
-import type { AiCli } from "../engine.js";
+import type { AiRuntime } from "../engine.js";
 /** See dispatcher.js for the messages. */
 export declare const HOST_PROTOCOL_VERSION = 1;
 export type HostMessage = Record<string, unknown>;
 export interface HostDispatcherOptions {
-    ai: AiCli;
+    ai: AiRuntime;
     /** Delivers one message to the application. */
     send: (message: HostMessage) => void;
     /** How long the app has to answer a tool call. */

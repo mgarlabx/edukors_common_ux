@@ -11,7 +11,7 @@ export interface SerializedError {
     retryable: boolean;
     meta?: ErrorMeta;
 }
-export declare class AiCliError extends Error {
+export declare class AiError extends Error {
     readonly code: ErrorCode;
     readonly meta: ErrorMeta | undefined;
     readonly retryable: boolean;
@@ -22,6 +22,6 @@ export declare class AiCliError extends Error {
     });
     toJSON(): SerializedError;
 }
-export declare const isAiCliError: (value: unknown) => value is AiCliError;
-/** Wraps anything thrown into an AiCliError, keeping the original as the cause. */
-export declare function toAiCliError(value: unknown, fallback?: ErrorCode): AiCliError;
+export declare const isAiError: (value: unknown) => value is AiError;
+/** Wraps anything thrown into an AiError, keeping the original as the cause. */
+export declare function toAiError(value: unknown, fallback?: ErrorCode): AiError;

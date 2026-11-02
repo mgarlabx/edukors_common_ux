@@ -1,4 +1,4 @@
-import { AiCliError } from "../errors.js";
+import { AiError } from "../errors.js";
 import { ManagedProcess, readLines } from "./process.js";
 const MAX_OUTPUT = 64 << 10;
 export async function runLoginCommand(spec, context, options) {
@@ -34,8 +34,8 @@ export async function runLoginCommand(spec, context, options) {
     clearTimeout(timer);
     context.signal?.removeEventListener("abort", onAbort);
     if (info.code === null && info.signal === null)
-        throw new AiCliError("PROVIDER_START_FAILED", `could not start ${spec.file}`, { cause: await spawnError });
+        throw new AiError("PROVIDER_START_FAILED", `could not start ${spec.file}`, { cause: await spawnError });
     if (context.signal?.aborted)
-        throw new AiCliError("CANCELLED", "sign-in cancelled");
+        throw new AiError("CANCELLED", "sign-in cancelled");
     return { code: info.code, stdout, stderr: proc.stderr.toString(), timedOut };
 }

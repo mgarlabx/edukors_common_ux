@@ -1,4 +1,4 @@
-import { AiCliError } from "../../errors.js";
+import { AiError } from "../../errors.js";
 import { type Usage } from "../../events.js";
 import type { ProviderAdapter } from "../../provider.js";
 /**
@@ -36,5 +36,5 @@ export interface CodexProviderOptions {
 /** Every window of every limit, from 0 to 1; the most used one leads. */
 export declare function codexLimits(read: any): Omit<Usage, "observedAt"> | null;
 /** Codex's turn errors, as stable codes. */
-export declare function codexError(error: any): AiCliError;
+export declare function codexError(error: any): AiError;
 export declare function createCodexProvider(options?: CodexProviderOptions): ProviderAdapter;

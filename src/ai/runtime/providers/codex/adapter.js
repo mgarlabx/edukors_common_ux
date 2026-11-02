@@ -1,7 +1,7 @@
 import { PROVIDER_CATALOG } from "../../providerCatalog.js";
 import { mkdirSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
-import { AiCliError, toAiCliError } from "../../errors.js";
+import { AiError, toAiError } from "../../errors.js";
 import { fromWindows } from "../../events.js";
 import { startToolBridge, TOOL_SERVER_NAME } from "../../mcp/toolServer.js";
 import { compareVersions, findExecutable, readVersion } from "../../platform/discovery.js";
@@ -40,15 +40,15 @@ export function codexError(error) {
     switch (kind) {
         case "usageLimitExceeded":
         case "rateLimitExceeded":
-            return new AiCliError("RATE_LIMITED", "Codex's usage limit was reached", { meta });
+            return new AiError("RATE_LIMITED", "Codex's usage limit was reached", { meta });
         case "unauthorized":
-            return new AiCliError("ACCOUNT_EXPIRED", "Codex needs to be signed in again", { meta });
+            return new AiError("ACCOUNT_EXPIRED", "Codex needs to be signed in again", { meta });
         case "serverOverloaded":
         case "internalServerError":
         case "httpConnectionFailed":
-            return new AiCliError("PROVIDER_ERROR", "Codex is temporarily unavailable", { meta, retryable: true });
+            return new AiError("PROVIDER_ERROR", "Codex is temporarily unavailable", { meta, retryable: true });
         default:
-            return new AiCliError("PROVIDER_ERROR", "Codex could not complete the request", { meta });
+            return new AiError("PROVIDER_ERROR", "Codex could not complete the request", { meta });
     }
 }
 const tomlString = (value) => JSON.stringify(value);
@@ -83,7 +83,7 @@ export function createCodexProvider(options = {}) {
             return await fn(rpc);
         }
         catch (e) {
-            throw toAiCliError(e, "PROVIDER_ERROR");
+            throw toAiError(e, "PROVIDER_ERROR");
         }
         finally {
             await proc.terminate(1_000);
@@ -117,9 +117,9 @@ export function createCodexProvider(options = {}) {
             // completes in the browser too, so there is no code to paste back.
             const result = await runLoginCommand({ file: context.detection.executable, args: ["login"], env: env(context) }, context, { urlPattern: LOGIN_URL, acceptsCode: false });
             if (result.timedOut)
-                throw new AiCliError("TIMEOUT", "sign-in did not finish in time");
+                throw new AiError("TIMEOUT", "sign-in did not finish in time");
             if (result.code !== 0)
-                throw new AiCliError("LOGIN_FAILED", "Codex sign-in failed", { meta: { detail: (result.stderr.trim() || result.stdout.trim()).slice(-300) } });
+                throw new AiError("LOGIN_FAILED", "Codex sign-in failed", { meta: { detail: (result.stderr.trim() || result.stdout.trim()).slice(-300) } });
             return this.accountStatus(context);
         },
         async accountStatus(context) {
@@ -146,7 +146,7 @@ export function createCodexProvider(options = {}) {
         async logout(context) {
             const result = await cli(context, ["logout"]);
             if (result.code !== 0 && !/not logged in/i.test(result.stdout + result.stderr))
-                throw new AiCliError("PROVIDER_ERROR", "Codex sign-out failed");
+                throw new AiError("PROVIDER_ERROR", "Codex sign-out failed");
         },
         listModels: (context) => withAppServer(context, async (rpc) => {
             const list = await rpc.request("model/list", { limit: 50 }, 30_000);
@@ -195,7 +195,7 @@ function sandboxPaths(context, workspace) {
     };
 }
 async function initialize(rpc, timeoutMs) {
-    await rpc.request("initialize", { clientInfo: { name: "edukors-ai-cli", title: "EDUKORS", version: VERSION }, capabilities: { experimentalApi: true } }, timeoutMs);
+    await rpc.request("initialize", { clientInfo: { name: "edukors-common", title: "EDUKORS", version: VERSION }, capabilities: { experimentalApi: true } }, timeoutMs);
     rpc.notify("initialized", {});
 }
 class CodexSession {
@@ -285,9 +285,9 @@ class CodexSession {
         }
         catch (e) {
             await session.close();
-            const error = toAiCliError(e, "PROVIDER_START_FAILED");
+            const error = toAiError(e, "PROVIDER_START_FAILED");
             if (error.code === "PROVIDER_CRASHED")
-                throw new AiCliError("PROVIDER_START_FAILED", "Codex exited during startup", { meta: { stderr: proc.stderr.toString().slice(-300) } });
+                throw new AiError("PROVIDER_START_FAILED", "Codex exited during startup", { meta: { stderr: proc.stderr.toString().slice(-300) } });
             throw error;
         }
         void proc.exited.then((info) => session.exited(info.code, info.signal));
@@ -298,7 +298,7 @@ class CodexSession {
         await initialize(this.rpc, timeoutMs);
         const read = await this.rpc.request("account/read", { refreshToken: false }, timeoutMs);
         if (!read?.account)
-            throw new AiCliError("ACCOUNT_DISCONNECTED", "Codex is not signed in on this account");
+            throw new AiError("ACCOUNT_DISCONNECTED", "Codex is not signed in on this account");
         const cwd = this.workspace?.dir ?? context.workDir;
         await this.disableSkills(cwd);
         const common = {
@@ -315,7 +315,7 @@ class CodexSession {
             : await this.rpc.request("thread/start", { cwd, ...common }, 60_000);
         const id = thread?.thread?.id;
         if (typeof id !== "string" || !id)
-            throw new AiCliError("PROVIDER_PROTOCOL", "Codex opened no thread");
+            throw new AiError("PROVIDER_PROTOCOL", "Codex opened no thread");
         this.resumeId = id;
     }
     /**
@@ -338,7 +338,7 @@ class CodexSession {
     }
     async send(input, sink) {
         if (this.pending)
-            throw new AiCliError("SESSION_BUSY", "a turn is already running");
+            throw new AiError("SESSION_BUSY", "a turn is already running");
         const text = input.context ? `${input.text}\n\n<document>\n${input.context}\n</document>` : input.text;
         const done = new Promise((resolve, reject) => {
             this.pending = { requestId: input.requestId, turnId: null, sink, error: null, thinking: false, resolve, reject };
@@ -358,7 +358,7 @@ class CodexSession {
                 this.adopt(turnId);
         }
         catch (e) {
-            this.settle((p) => p.reject(toAiCliError(e, "PROVIDER_ERROR")));
+            this.settle((p) => p.reject(toAiError(e, "PROVIDER_ERROR")));
         }
         return done;
     }
@@ -378,7 +378,7 @@ class CodexSession {
         this.closing = true;
         await this.proc.terminate(1_000);
         await this.bridge?.close();
-        this.settle((p) => p.reject(new AiCliError("SESSION_CLOSED", "the session was closed")));
+        this.settle((p) => p.reject(new AiError("SESSION_CLOSED", "the session was closed")));
     }
     adopt(turnId) {
         const pending = this.pending;
@@ -547,7 +547,7 @@ class CodexSession {
         if (this.closing)
             return;
         void this.bridge?.close();
-        const error = new AiCliError("PROVIDER_CRASHED", "Codex stopped unexpectedly", { meta: { code, signal, stderr: this.proc.stderr.toString().slice(-300) } });
+        const error = new AiError("PROVIDER_CRASHED", "Codex stopped unexpectedly", { meta: { code, signal, stderr: this.proc.stderr.toString().slice(-300) } });
         this.hooks.exited(error);
         this.settle((p) => p.reject(error));
     }

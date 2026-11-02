@@ -22,7 +22,7 @@ globalThis.EdukorsAiHost = (() => {
   const emit = (kind, value) => { for (const fn of listeners[kind]) { try { fn(value); } catch (error) { console.error(error); } } };
   const setStatus = next => { if (status !== next) { status = next; emit('status', status); } };
 
-  // An error answer keeps the runtime's stable code (AiCliError.toJSON: { code, message, meta }).
+  // An error answer keeps the runtime's stable code (AiError.toJSON: { code, message, meta }).
   class HostError extends Error {
     constructor(error) { super(error?.message || 'The AI host failed.'); this.code = error?.code || 'INTERNAL'; this.meta = error?.meta; }
   }

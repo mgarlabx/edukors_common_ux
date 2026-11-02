@@ -1,5 +1,5 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { AiCliError } from "../../errors.js";
+import { AiError } from "../../errors.js";
 import { type ActivityPhase, type Usage } from "../../events.js";
 /**
  * Claude Code's messages, as what a turn needs. This file has no SDK runtime
@@ -23,14 +23,14 @@ export type ClaudeAction = {
 /** A failure reported mid-turn; the turn ends with it unless it recovers. */
  | {
     kind: "error";
-    error: AiCliError;
+    error: AiError;
 } | {
     kind: "end";
     outcome: "completed" | "cancelled";
 } | {
     kind: "fail";
-    error: AiCliError;
+    error: AiError;
 };
 /** Claude Code's error names on a message, as stable codes. */
-export declare function claudeError(name: string, detail?: string): AiCliError;
+export declare function claudeError(name: string, detail?: string): AiError;
 export declare function interpret(msg: SDKMessage): ClaudeAction[];

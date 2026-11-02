@@ -56,7 +56,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./vitest-shim.mjs";
-import { createAiCli, createClaudeProvider, createCodexProvider, seatbeltPolicy } from "../../src/ai/runtime/index.js";
+import { createAiRuntime, createClaudeProvider, createCodexProvider, seatbeltPolicy } from "../../src/ai/runtime/index.js";
 import { workspaceDecision, workspaceSettings, workspaceTools } from "../../src/ai/runtime/providers/claude/adapter.js";
 import { resolveWorkspace } from "../../src/ai/runtime/workspace.js";
 import { fakeClaudeSdk } from "./fakeClaudeSdk.mjs";
@@ -114,7 +114,7 @@ describe("workspace: sessions", () => {
         expect(textOf(events, "w")).toMatch(/shell=false/);
     });
     it("is refused where the provider cannot confine it", async () => {
-        const ai = createAiCli({ appId: "slides", dataDir: await tempDir(), providers: [createCodexProvider({ executable: FAKE_CODEX, platform: "linux" })] });
+        const ai = createAiRuntime({ appId: "slides", dataDir: await tempDir(), providers: [createCodexProvider({ executable: FAKE_CODEX, platform: "linux" })] });
         try {
             const account = await ai.createAccount({ providerId: "codex" });
             await ai.connectAccount(account.id);
@@ -162,7 +162,7 @@ describe("workspace: Claude", () => {
     });
     it("runs the session in the folder, restricted, with the workspace's settings", async () => {
         const fake = fakeClaudeSdk();
-        const ai = createAiCli({ appId: "slides", dataDir: await tempDir(), providers: [createClaudeProvider({ executable: FAKE_CLAUDE, loadSdk: fake.loadSdk, platform: "win32" })] });
+        const ai = createAiRuntime({ appId: "slides", dataDir: await tempDir(), providers: [createClaudeProvider({ executable: FAKE_CLAUDE, loadSdk: fake.loadSdk, platform: "win32" })] });
         try {
             const account = await ai.createAccount({ providerId: "claude" });
             await ai.connectAccount(account.id);
@@ -195,7 +195,7 @@ describe("workspace: Claude", () => {
 describe("workspace: Claude's temporary folder", () => {
     it("with commands, the session has a temporary folder of its own, writable in the sandbox and removed at the end", async () => {
         const fake = fakeClaudeSdk();
-        const ai = createAiCli({ appId: "slides", dataDir: await tempDir(), providers: [createClaudeProvider({ executable: FAKE_CLAUDE, loadSdk: fake.loadSdk, platform: "darwin" })] });
+        const ai = createAiRuntime({ appId: "slides", dataDir: await tempDir(), providers: [createClaudeProvider({ executable: FAKE_CLAUDE, loadSdk: fake.loadSdk, platform: "darwin" })] });
         try {
             const account = await ai.createAccount({ providerId: "claude" });
             await ai.connectAccount(account.id);
@@ -214,7 +214,7 @@ describe("workspace: Claude's temporary folder", () => {
 });
 describe("workspace: Codex", () => {
     async function codex(options = {}) {
-        const ai = createAiCli({ appId: "slides", dataDir: await tempDir(), providers: [createCodexProvider({ executable: FAKE_CODEX, platform: "darwin", ...options })] });
+        const ai = createAiRuntime({ appId: "slides", dataDir: await tempDir(), providers: [createCodexProvider({ executable: FAKE_CODEX, platform: "darwin", ...options })] });
         const events = [];
         ai.onEvent((e) => events.push(e));
         const account = await ai.createAccount({ providerId: "codex" });

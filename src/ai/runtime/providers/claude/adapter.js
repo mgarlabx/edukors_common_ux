@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
-import { AiCliError, toAiCliError } from "../../errors.js";
+import { AiError, toAiError } from "../../errors.js";
 import { createToolMcpServer, TOOL_SERVER_NAME } from "../../mcp/toolServer.js";
 import { listSkills } from "../../skills.js";
 import { userToolDirs } from "../../platform/sandbox.js";
@@ -176,7 +176,7 @@ class Inbox {
 }
 function withTimeout(work, ms, message) {
     let timer;
-    return Promise.race([work, new Promise((_, reject) => (timer = setTimeout(() => reject(new AiCliError("TIMEOUT", message)), ms)))]).finally(() => clearTimeout(timer));
+    return Promise.race([work, new Promise((_, reject) => (timer = setTimeout(() => reject(new AiError("TIMEOUT", message)), ms)))]).finally(() => clearTimeout(timer));
 }
 export function createClaudeProvider(options = {}) {
     const minVersion = options.minVersion ?? MIN_VERSION;
@@ -188,7 +188,7 @@ export function createClaudeProvider(options = {}) {
         set: {
             ...options.env,
             CLAUDE_CONFIG_DIR: context.homeDir,
-            CLAUDE_AGENT_SDK_CLIENT_APP: "edukors-ai-cli",
+            CLAUDE_AGENT_SDK_CLIENT_APP: "edukors-common",
             CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
             CLAUDE_CODE_ENABLE_TASKS: "0",
             ENABLE_CLAUDEAI_MCP_SERVERS: "false",
@@ -259,9 +259,9 @@ export function createClaudeProvider(options = {}) {
             // code the user pastes; the application relays it to the command's input.
             const result = await runLoginCommand({ file: context.detection.executable, args: ["auth", "login", "--claudeai"], env: env(context) }, context, { urlPattern: LOGIN_URL, acceptsCode: true });
             if (result.timedOut)
-                throw new AiCliError("TIMEOUT", "sign-in did not finish in time");
+                throw new AiError("TIMEOUT", "sign-in did not finish in time");
             if (result.code !== 0)
-                throw new AiCliError("LOGIN_FAILED", "Claude sign-in failed", { meta: { detail: (result.stderr.trim() || result.stdout.trim()).slice(-300) } });
+                throw new AiError("LOGIN_FAILED", "Claude sign-in failed", { meta: { detail: (result.stderr.trim() || result.stdout.trim()).slice(-300) } });
             return this.accountStatus(context);
         },
         async accountStatus(context) {
@@ -272,7 +272,7 @@ export function createClaudeProvider(options = {}) {
                 parsed = AuthStatus.parse(JSON.parse(result.stdout));
             }
             catch (e) {
-                throw new AiCliError("PROVIDER_PROTOCOL", "unexpected output from claude auth status", { cause: e, meta: { code: result.code } });
+                throw new AiError("PROVIDER_PROTOCOL", "unexpected output from claude auth status", { cause: e, meta: { code: result.code } });
             }
             if (!parsed.loggedIn)
                 return { state: "disconnected" };
@@ -282,7 +282,7 @@ export function createClaudeProvider(options = {}) {
         async logout(context) {
             const result = await cli(context, ["auth", "logout"]);
             if (result.code !== 0)
-                throw new AiCliError("PROVIDER_ERROR", "Claude sign-out failed", { meta: { detail: result.stderr.trim().slice(-300) } });
+                throw new AiError("PROVIDER_ERROR", "Claude sign-out failed", { meta: { detail: result.stderr.trim().slice(-300) } });
         },
         async listModels(context) {
             const init = await initialize(context);
@@ -396,19 +396,19 @@ class ClaudeSession {
         try {
             const init = await withTimeout(q.initializationResult(), opts.startupTimeoutMs, "Claude Code did not start in time");
             if (!signedIn(init.account))
-                throw new AiCliError("ACCOUNT_DISCONNECTED", "Claude is not signed in on this account");
+                throw new AiError("ACCOUNT_DISCONNECTED", "Claude is not signed in on this account");
         }
         catch (e) {
             await session.close();
-            throw toAiCliError(e, "PROVIDER_START_FAILED");
+            throw toAiError(e, "PROVIDER_START_FAILED");
         }
         return session;
     }
     send(input, sink) {
         if (this.pending)
-            return Promise.reject(new AiCliError("SESSION_BUSY", "a turn is already running"));
+            return Promise.reject(new AiError("SESSION_BUSY", "a turn is already running"));
         if (this.closing)
-            return Promise.reject(new AiCliError("SESSION_CLOSED", "the session is closed"));
+            return Promise.reject(new AiError("SESSION_CLOSED", "the session is closed"));
         return new Promise((resolve, reject) => {
             this.pending = { requestId: input.requestId, sink, error: null, resolve, reject };
             const text = input.context ? `${input.text}\n\n<document>\n${input.context}\n</document>` : input.text;
@@ -438,7 +438,7 @@ class ClaudeSession {
         }
         await withTimeout(this.pump, 10_000, "Claude Code did not stop in time").catch((e) => this.log.warn("claude did not stop", e));
         this.removeTempDir();
-        this.settle((p) => p.reject(new AiCliError("SESSION_CLOSED", "the session was closed")));
+        this.settle((p) => p.reject(new AiError("SESSION_CLOSED", "the session was closed")));
     }
     removeTempDir() {
         if (this.tempDir)
@@ -477,7 +477,7 @@ class ClaudeSession {
         if (this.closing)
             return;
         this.removeTempDir();
-        const error = new AiCliError("PROVIDER_CRASHED", "Claude Code stopped unexpectedly", { cause: failure ?? undefined });
+        const error = new AiError("PROVIDER_CRASHED", "Claude Code stopped unexpectedly", { cause: failure ?? undefined });
         this.hooks.exited(error);
         this.settle((p) => p.reject(error));
     }

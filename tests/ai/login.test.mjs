@@ -54,13 +54,12 @@ import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./vitest-shim.mjs";
-import { createAiCli, createClaudeProvider, createCodexProvider } from "../../src/ai/runtime/index.js";
-import { runStdioHost } from "../../src/ai/runtime/host/stdio.js";
-import { tempDir } from "./helpers.mjs";
+import { createAiRuntime, createClaudeProvider, createCodexProvider } from "../../src/ai/runtime/index.js";
+import { pipeHost, tempDir } from "./helpers.mjs";
 const FAKE_CLAUDE = fileURLToPath(new URL("../../src/ai/runtime/fixtures/fake-claude.mjs", import.meta.url));
 const FAKE_CODEX = fileURLToPath(new URL("../../src/ai/runtime/fixtures/fake-codex.mjs", import.meta.url));
 async function claude(mode) {
-    const ai = createAiCli({ appId: "test", dataDir: await tempDir(), providers: [createClaudeProvider({ executable: FAKE_CLAUDE, ...(mode ? { env: { FAKE_CLAUDE_LOGIN: mode } } : {}) })] });
+    const ai = createAiRuntime({ appId: "test", dataDir: await tempDir(), providers: [createClaudeProvider({ executable: FAKE_CLAUDE, ...(mode ? { env: { FAKE_CLAUDE_LOGIN: mode } } : {}) })] });
     const account = await ai.createAccount({ providerId: "claude", label: "Work" });
     return { ai, account, [Symbol.asyncDispose]: () => ai.dispose() };
 }
@@ -166,7 +165,7 @@ describe("sign-in without a working browser", () => {
         }
     });
     it("offers Codex's address without asking for a code", async () => {
-        const ai = createAiCli({ appId: "test", dataDir: await tempDir(), providers: [createCodexProvider({ executable: FAKE_CODEX })] });
+        const ai = createAiRuntime({ appId: "test", dataDir: await tempDir(), providers: [createCodexProvider({ executable: FAKE_CODEX })] });
         try {
             const account = await ai.createAccount({ providerId: "codex" });
             const prompts = [];
@@ -177,13 +176,13 @@ describe("sign-in without a working browser", () => {
             await ai.dispose();
         }
     });
-    it("relays the address and the pasted code over the stdio host", async () => {
+    it("relays the address and the pasted code over the host protocol", async () => {
         const env_6 = { stack: [], error: void 0, hasError: false };
         try {
             const s = __addDisposableResource(env_6, await claude("code"), true);
             const input = new PassThrough();
             const output = new PassThrough();
-            const host = runStdioHost({ ai: s.ai, input, output });
+            const host = pipeHost({ ai: s.ai, input, output });
             const lines = [];
             let answered;
             const result = new Promise((r) => (answered = r));

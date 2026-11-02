@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
-import { AiCliError } from "../errors.js";
+import { AiError } from "../errors.js";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function processAlive(pid) {
     try {
@@ -47,7 +47,7 @@ export async function withLock(dir, fn, options = {}) {
                 continue;
             }
             if (Date.now() > deadline)
-                throw options.onTimeout?.() ?? new AiCliError("REGISTRY_LOCKED", "the shared account registry is busy", { meta: { lock: dir } });
+                throw options.onTimeout?.() ?? new AiError("REGISTRY_LOCKED", "the shared account registry is busy", { meta: { lock: dir } });
             await sleep(Math.min(200, 5 * 2 ** Math.min(attempt, 5)) + Math.random() * 10);
         }
     }

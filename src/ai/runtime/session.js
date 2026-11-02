@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { AiCliError, toAiCliError } from "./errors.js";
+import { AiError, toAiError } from "./errors.js";
 /** The request's text, followed by the attached files' paths, which the agent opens with its own tools. */
 const withAttachments = (text, attachments) => !attachments.length ? text : `${text}\n\nAttached files (open them with your file tools; images and PDFs can be read directly):\n${attachments.map((a) => `- ${a.name} (${a.mimeType}): ${a.path}`).join("\n")}`;
 const settledWithin = (turn, ms) => Promise.race([turn.settled.then(() => true), new Promise((r) => setTimeout(() => r(false), ms).unref())]);
@@ -46,7 +46,7 @@ export class AiSession {
     /** Opens (or reopens) the provider session. Called by the library; reopening happens on demand. */
     async start(resumeId) {
         if (this.closing)
-            throw new AiCliError("SESSION_CLOSED", "the session is closed");
+            throw new AiError("SESSION_CLOSED", "the session is closed");
         this._state = "opening";
         const context = await this.deps.context();
         context.options = { ...this.options };
@@ -62,11 +62,11 @@ export class AiSession {
             if (this.providerToken === token)
                 this.providerToken = null;
             this._state = this.closing ? "closed" : "failed";
-            throw toAiCliError(e, "PROVIDER_START_FAILED");
+            throw toAiError(e, "PROVIDER_START_FAILED");
         }
         if (this.closing || this.providerToken !== token) {
             await instance.close().catch(() => undefined);
-            throw new AiCliError("SESSION_CLOSED", "the session is closed");
+            throw new AiError("SESSION_CLOSED", "the session is closed");
         }
         this.provider = instance;
         const resumed = context.resumeId !== undefined && instance.resumeId === context.resumeId;
@@ -81,9 +81,9 @@ export class AiSession {
      */
     async send(text, options = {}) {
         if (this.closing)
-            throw new AiCliError("SESSION_CLOSED", "the session is closed");
+            throw new AiError("SESSION_CLOSED", "the session is closed");
         if (this.turn)
-            throw new AiCliError("SESSION_BUSY", "a request is already in progress");
+            throw new AiError("SESSION_BUSY", "a request is already in progress");
         const turn = this.newTurn(options.requestId ?? randomUUID());
         this.turn = turn;
         this._state = "busy";
@@ -97,7 +97,7 @@ export class AiSession {
                 return this.finish(turn, "cancelled");
             const provider = this.provider;
             if (!provider)
-                throw new AiCliError("PROVIDER_CRASHED", "the provider stopped before the request started");
+                throw new AiError("PROVIDER_CRASHED", "the provider stopped before the request started");
             const attachments = options.attachments?.length ? await this.saveAttachments(turn.requestId, options.attachments) : [];
             const outcome = await provider.send({ requestId: turn.requestId, text: withAttachments(text, attachments), ...(attachments.length ? { attachments } : {}), ...(options.context !== undefined ? { context: options.context } : {}) }, this.sinkFor(turn));
             return this.finish(turn, turn.cancelled ? "cancelled" : outcome);
@@ -105,7 +105,7 @@ export class AiSession {
         catch (e) {
             if (turn.cancelled)
                 return this.finish(turn, "cancelled");
-            const error = toAiCliError(e, "PROVIDER_ERROR");
+            const error = toAiError(e, "PROVIDER_ERROR");
             if (error.code === "PROVIDER_CRASHED" || error.code === "PROVIDER_START_FAILED")
                 this.dropProvider();
             this.deps.log.warn(`request failed: ${error.code}`, { message: error.message, cause: error.cause });
@@ -128,7 +128,7 @@ export class AiSession {
             if (!this.closing)
                 this._state = "interrupting";
             for (const q of turn.questions.values())
-                q.reject(new AiCliError("CANCELLED", "the request was cancelled"));
+                q.reject(new AiError("CANCELLED", "the request was cancelled"));
             turn.questions.clear();
             const provider = this.provider;
             provider?.interrupt().catch((e) => this.deps.log.warn("provider interrupt failed", e));
@@ -147,17 +147,17 @@ export class AiSession {
     answer(questionId, answer) {
         const pending = this.turn?.questions.get(questionId);
         if (!pending)
-            throw new AiCliError("QUESTION_NOT_FOUND", "no such question is waiting", { meta: { questionId } });
+            throw new AiError("QUESTION_NOT_FOUND", "no such question is waiting", { meta: { questionId } });
         this.turn.questions.delete(questionId);
         pending.resolve(answer);
     }
     async updateOptions(options) {
         if (this.closing)
-            throw new AiCliError("SESSION_CLOSED", "the session is closed");
+            throw new AiError("SESSION_CLOSED", "the session is closed");
         const next = { ...this.options, ...options };
         if (this.provider) {
             if (!this.deps.capabilities.liveOptions || !this.provider.updateOptions) {
-                throw new AiCliError("CAPABILITY_UNSUPPORTED", "this provider cannot change options in an open session", { meta: { providerId: this.providerId } });
+                throw new AiError("CAPABILITY_UNSUPPORTED", "this provider cannot change options in an open session", { meta: { providerId: this.providerId } });
             }
             await this.provider.updateOptions(next);
         }
@@ -191,7 +191,7 @@ export class AiSession {
         const result = { requestId: turn.requestId, status, ...(error ? { error: error.toJSON() } : {}) };
         turn.result = result;
         for (const q of turn.questions.values())
-            q.reject(new AiCliError("CANCELLED", "the request ended"));
+            q.reject(new AiError("CANCELLED", "the request ended"));
         turn.questions.clear();
         if (!turn.abort.signal.aborted)
             turn.abort.abort();
@@ -220,7 +220,7 @@ export class AiSession {
         if (this.turn || this.closing)
             return;
         this._state = "failed";
-        const err = toAiCliError(error, "PROVIDER_CRASHED");
+        const err = toAiError(error, "PROVIDER_CRASHED");
         this.deps.log.warn("provider exited while idle", { code: err.code, message: err.message });
         this.emit({ type: "error", error: err.toJSON() });
     }
@@ -241,7 +241,7 @@ export class AiSession {
             ask: (question) => {
                 if (!live()) {
                     drop("question");
-                    return Promise.reject(new AiCliError("CANCELLED", "the request is no longer active"));
+                    return Promise.reject(new AiError("CANCELLED", "the request is no longer active"));
                 }
                 const questionId = randomUUID();
                 return new Promise((resolve, reject) => {
@@ -284,7 +284,7 @@ export class AiSession {
         }
         catch (e) {
             this.deps.log.warn(`tool ${name} threw`, e);
-            return fail(e instanceof AiCliError ? e.code : "TOOL_FAILED", `Tool ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
+            return fail(e instanceof AiError ? e.code : "TOOL_FAILED", `Tool ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
         }
     }
     async callExternal(turn, live, server, tool, args) {
@@ -323,7 +323,6 @@ export class AiSession {
      * A native action of the provider in the working folder (creating or editing a file, running a command), put to
      * the application, which decides by its mode (Common: "review before applying" asks the person). Reading and the
      * web are not put. Without an authorizer, actions go ahead: the folder and the sandbox still confine them.
-     * (Common addition; edukors_ai_cli 0.2.2 had no native actions outside its workspace rules.)
      */
     async authorizeNative(turn, live, action) {
         if (!live())

@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, realpath, rm } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import { arch, platform } from "node:os";
-import { AiCliError, toAiCliError } from "./errors.js";
+import { AiError, toAiError } from "./errors.js";
 import { Diagnostics } from "./diagnostics.js";
 import { DataPaths, defaultDataDir } from "./platform/paths.js";
 import { AccountRegistry } from "./registry/registry.js";
@@ -14,7 +14,7 @@ import { redactValue } from "./redact.js";
 import { resolveWorkspace } from "./workspace.js";
 import { VERSION } from "./version.js";
 const APP_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-export class AiCli {
+export class AiRuntime {
     options;
     appId;
     paths;
@@ -33,11 +33,11 @@ export class AiCli {
     constructor(options) {
         this.options = options;
         if (!APP_ID.test(options.appId))
-            throw new AiCliError("INVALID_ARGUMENT", `invalid appId: ${options.appId}`);
+            throw new AiError("INVALID_ARGUMENT", `invalid appId: ${options.appId}`);
         this.appId = options.appId;
         for (const adapter of options.providers) {
             if (this.adapters.has(adapter.id))
-                throw new AiCliError("INVALID_ARGUMENT", `duplicate provider: ${adapter.id}`);
+                throw new AiError("INVALID_ARGUMENT", `duplicate provider: ${adapter.id}`);
             this.adapters.set(adapter.id, adapter);
         }
         this.paths = new DataPaths(options.dataDir ?? defaultDataDir());
@@ -82,7 +82,7 @@ export class AiCli {
         const now = new Date().toISOString();
         const record = await this.registry.update((accounts) => {
             if (!caps.multiAccount && accounts.some((a) => a.providerId === adapter.id)) {
-                throw new AiCliError("CAPABILITY_UNSUPPORTED", `${adapter.displayName} does not support more than one account here`, { meta: { providerId: adapter.id } });
+                throw new AiError("CAPABILITY_UNSUPPORTED", `${adapter.displayName} does not support more than one account here`, { meta: { providerId: adapter.id } });
             }
             const created = { id, providerId: adapter.id, label: label.slice(0, 80), home: this.paths.accountHomeRelative(id), createdAt: now, updatedAt: now };
             accounts.push(created);
@@ -96,11 +96,11 @@ export class AiCli {
     async renameAccount(accountId, label) {
         const clean = label.trim();
         if (!clean)
-            throw new AiCliError("INVALID_ARGUMENT", "the label cannot be empty");
+            throw new AiError("INVALID_ARGUMENT", "the label cannot be empty");
         const record = await this.registry.update((accounts) => {
             const account = accounts.find((a) => a.id === accountId);
             if (!account)
-                throw new AiCliError("ACCOUNT_NOT_FOUND", "no such account", { meta: { accountId } });
+                throw new AiError("ACCOUNT_NOT_FOUND", "no such account", { meta: { accountId } });
             account.label = clean.slice(0, 80);
             account.updatedAt = new Date().toISOString();
             return { ...account };
@@ -117,7 +117,7 @@ export class AiCli {
         const record = await this.registry.update((accounts) => {
             const index = accounts.findIndex((a) => a.id === accountId);
             if (index === -1)
-                throw new AiCliError("ACCOUNT_NOT_FOUND", "no such account", { meta: { accountId } });
+                throw new AiError("ACCOUNT_NOT_FOUND", "no such account", { meta: { accountId } });
             return accounts.splice(index, 1)[0];
         });
         await Promise.all([...this.openSessions.values()].filter((s) => s.accountId === accountId).map((s) => s.close("accountRemoved")));
@@ -125,7 +125,7 @@ export class AiCli {
             const home = this.paths.resolve(record.home);
             const rel = relative(join(this.paths.root, "ai", "accounts"), home);
             if (!rel || rel.startsWith("..") || isAbsolute(rel))
-                throw new AiCliError("INTERNAL", "refusing to delete outside the managed accounts directory");
+                throw new AiError("INTERNAL", "refusing to delete outside the managed accounts directory");
             await rm(home, { recursive: true, force: true });
         }
         this.log.info("account removed", { accountId, deleteData: Boolean(options.deleteData) });
@@ -137,7 +137,7 @@ export class AiCli {
     async connectAccount(accountId, options = {}) {
         const { adapter, context } = await this.accountContext(accountId, options.signal);
         if (this.logins.has(accountId))
-            throw new AiCliError("SESSION_BUSY", "this account is already signing in", { meta: { accountId } });
+            throw new AiError("SESSION_BUSY", "this account is already signing in", { meta: { accountId } });
         const entry = {};
         this.logins.set(accountId, entry);
         const login = {
@@ -153,14 +153,14 @@ export class AiCli {
             code: () => new Promise((resolve, reject) => {
                 entry.submit = resolve;
                 if (options.signal?.aborted)
-                    reject(new AiCliError("CANCELLED", "sign-in cancelled"));
-                options.signal?.addEventListener("abort", () => reject(new AiCliError("CANCELLED", "sign-in cancelled")), { once: true });
+                    reject(new AiError("CANCELLED", "sign-in cancelled"));
+                options.signal?.addEventListener("abort", () => reject(new AiError("CANCELLED", "sign-in cancelled")), { once: true });
             }),
         };
         try {
             return await this.authMutex.run(adapter.id, () => withLock(join(this.paths.locksDir, `auth-${adapter.id}.lock`), () => this.guard(adapter.connectAccount({ ...context, login }), "LOGIN_FAILED"), {
                 timeoutMs: this.options.authLockTimeoutMs ?? 5 * 60_000,
-                onTimeout: () => new AiCliError("TIMEOUT", "another EDUKORS application is signing in to this provider", { meta: { providerId: adapter.id } }),
+                onTimeout: () => new AiError("TIMEOUT", "another EDUKORS application is signing in to this provider", { meta: { providerId: adapter.id } }),
             }));
         }
         finally {
@@ -174,10 +174,10 @@ export class AiCli {
     submitLoginCode(accountId, code) {
         const clean = code.trim();
         if (!clean || clean.length > 4096 || /[\r\n\0]/.test(clean))
-            throw new AiCliError("INVALID_ARGUMENT", "the code must be a single line of text");
+            throw new AiError("INVALID_ARGUMENT", "the code must be a single line of text");
         const entry = this.logins.get(accountId);
         if (!entry?.submit)
-            throw new AiCliError("INVALID_ARGUMENT", "no sign-in is waiting for a code on this account", { meta: { accountId } });
+            throw new AiError("INVALID_ARGUMENT", "no sign-in is waiting for a code on this account", { meta: { accountId } });
         entry.submit(clean);
         entry.submit = undefined;
     }
@@ -214,22 +214,22 @@ export class AiCli {
      */
     async openSession(input) {
         if (this.disposed)
-            throw new AiCliError("SESSION_CLOSED", "the library has been disposed");
+            throw new AiError("SESSION_CLOSED", "the library has been disposed");
         if (!input.documentId)
-            throw new AiCliError("INVALID_ARGUMENT", "documentId is required");
+            throw new AiError("INVALID_ARGUMENT", "documentId is required");
         const tools = input.tools ?? [];
         try {
             assertToolNames(tools);
         }
         catch (e) {
-            throw toAiCliError(e, "INVALID_ARGUMENT");
+            throw toAiError(e, "INVALID_ARGUMENT");
         }
         const { adapter, context, account } = await this.accountContext(input.accountId);
         const capabilities = adapter.capabilities(context.detection);
         if (tools.length > 0 && !capabilities.tools)
             throw this.unsupported(adapter, "tools");
         if (input.skillsDir && !isAbsolute(input.skillsDir))
-            throw new AiCliError("INVALID_ARGUMENT", "skillsDir must be an absolute path");
+            throw new AiError("INVALID_ARGUMENT", "skillsDir must be an absolute path");
         if (input.workspace && !capabilities.workspace)
             throw this.unsupported(adapter, "workspace");
         const libraryDir = join(this.paths.root, "ai");
@@ -312,7 +312,7 @@ export class AiCli {
             this.log.error("could not read the registry", e);
         }
         return redactValue({
-            library: { name: "@edukors/ai-cli", version: VERSION },
+            library: { name: "edukors-common-ux", version: VERSION },
             appId: this.appId,
             platform: platform(),
             arch: arch(),
@@ -333,7 +333,7 @@ export class AiCli {
     adapter(providerId) {
         const adapter = this.adapters.get(providerId);
         if (!adapter)
-            throw new AiCliError("PROVIDER_UNKNOWN", `unknown provider: ${providerId}`, { meta: { providerId } });
+            throw new AiError("PROVIDER_UNKNOWN", `unknown provider: ${providerId}`, { meta: { providerId } });
         return adapter;
     }
     accountInfo(record) {
@@ -350,18 +350,18 @@ export class AiCli {
     async accountContext(accountId, signal) {
         const account = await this.registry.get(accountId);
         if (!account)
-            throw new AiCliError("ACCOUNT_NOT_FOUND", "no such account", { meta: { accountId } });
+            throw new AiError("ACCOUNT_NOT_FOUND", "no such account", { meta: { accountId } });
         const adapter = this.adapter(account.providerId);
         const detection = await this.detect(adapter.id);
         if (detection.status === "missing")
-            throw new AiCliError("CLI_MISSING", `${adapter.displayName} is not installed`, { meta: { providerId: adapter.id } });
+            throw new AiError("CLI_MISSING", `${adapter.displayName} is not installed`, { meta: { providerId: adapter.id } });
         if (detection.status === "incompatible") {
-            throw new AiCliError("CLI_INCOMPATIBLE", `${adapter.displayName} ${detection.version ?? ""} is not supported`.trim(), {
+            throw new AiError("CLI_INCOMPATIBLE", `${adapter.displayName} ${detection.version ?? ""} is not supported`.trim(), {
                 meta: { providerId: adapter.id, version: detection.version, required: detection.requiredVersion },
             });
         }
         if (detection.status !== "ready")
-            throw new AiCliError("PROVIDER_ERROR", `${adapter.displayName} could not be checked`, { meta: { providerId: adapter.id, detail: detection.detail } });
+            throw new AiError("PROVIDER_ERROR", `${adapter.displayName} could not be checked`, { meta: { providerId: adapter.id, detail: detection.detail } });
         const homeDir = this.paths.resolve(account.home);
         await mkdir(homeDir, { recursive: true, mode: 0o700 });
         return {
@@ -382,13 +382,13 @@ export class AiCli {
             return await work;
         }
         catch (e) {
-            const error = toAiCliError(e, fallback);
+            const error = toAiError(e, fallback);
             this.log.warn(`operation failed: ${error.code}`, { message: error.message, meta: error.meta });
             throw error;
         }
     }
     unsupported(adapter, capability) {
-        return new AiCliError("CAPABILITY_UNSUPPORTED", `${adapter.displayName} does not support ${capability}`, { meta: { providerId: adapter.id, capability } });
+        return new AiError("CAPABILITY_UNSUPPORTED", `${adapter.displayName} does not support ${capability}`, { meta: { providerId: adapter.id, capability } });
     }
     publish(partial) {
         const event = { ...partial, seq: ++this.seq, at: new Date().toISOString() };
@@ -403,4 +403,4 @@ export class AiCli {
         return event;
     }
 }
-export const createAiCli = (options) => new AiCli(options);
+export const createAiRuntime = (options) => new AiRuntime(options);

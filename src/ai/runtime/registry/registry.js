@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
-import { AiCliError } from "../errors.js";
+import { AiError } from "../errors.js";
 import { KeyedMutex, withLock } from "./lock.js";
 /**
  * The shared account registry: non-secret account metadata, read and written
@@ -54,7 +54,7 @@ export class AccountRegistry {
         return this.mutex.run("registry", () => withLock(this.lockDir, async () => {
             const current = await this.read();
             if (current.schemaVersion > REGISTRY_SCHEMA_VERSION) {
-                throw new AiCliError("REGISTRY_TOO_NEW", "the account registry was written by a newer EDUKORS version", {
+                throw new AiError("REGISTRY_TOO_NEW", "the account registry was written by a newer EDUKORS version", {
                     meta: { found: current.schemaVersion, supported: REGISTRY_SCHEMA_VERSION },
                 });
             }
@@ -82,17 +82,17 @@ export class AccountRegistry {
             json = JSON.parse(raw);
         }
         catch (e) {
-            throw new AiCliError("REGISTRY_CORRUPT", "the account registry is not valid JSON", { cause: e, meta: { file: this.file } });
+            throw new AiError("REGISTRY_CORRUPT", "the account registry is not valid JSON", { cause: e, meta: { file: this.file } });
         }
         const version = json?.minReaderVersion;
         if (typeof version === "number" && version > REGISTRY_SCHEMA_VERSION) {
-            throw new AiCliError("REGISTRY_TOO_NEW", "the account registry was written by a newer EDUKORS version", {
+            throw new AiError("REGISTRY_TOO_NEW", "the account registry was written by a newer EDUKORS version", {
                 meta: { requires: version, supported: REGISTRY_SCHEMA_VERSION },
             });
         }
         const parsed = RegistryFileSchema.safeParse(json);
         if (!parsed.success)
-            throw new AiCliError("REGISTRY_CORRUPT", "the account registry has an invalid structure", { meta: { file: this.file, issue: z.prettifyError(parsed.error) } });
+            throw new AiError("REGISTRY_CORRUPT", "the account registry has an invalid structure", { meta: { file: this.file, issue: z.prettifyError(parsed.error) } });
         return parsed.data;
     }
     /** Write to a temporary file, flush, then rename over the original. */

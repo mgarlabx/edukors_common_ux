@@ -61,7 +61,7 @@ export interface SessionOptions {
 /** An address the user can open to sign in, offered while a sign-in runs. */
 export interface LoginPrompt {
     url: string;
-    /** The page ends with a code the user pastes back (see `AiCli.submitLoginCode`). */
+    /** The page ends with a code the user pastes back (see `AiRuntime.submitLoginCode`). */
     acceptsCode: boolean;
 }
 /** How a sign-in reaches the user while it runs. Present only during `connectAccount`. */
@@ -155,7 +155,7 @@ export type TurnOutcome = "completed" | "cancelled";
 export interface ProviderSession {
     /** The provider's own conversation id, used to resume. */
     readonly resumeId: string | undefined;
-    /** Resolves when the turn ends; rejects with an AiCliError on failure. */
+    /** Resolves when the turn ends; rejects with an AiError on failure. */
     send(input: TurnInput, sink: TurnSink): Promise<TurnOutcome>;
     /** Asks the provider to stop; the pending `send` should settle soon after. */
     interrupt(): Promise<void>;

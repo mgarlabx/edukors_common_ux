@@ -159,8 +159,7 @@ async function serve() {
 
   const wait = (id) => new Promise((resolve) => waiting.set(id, resolve));
   // The adapters append the document context after the person's words ("\n\n<document>…</document>");
-  // it is set aside here, so the keywords are read from the person's own text. (Common: added to the
-  // fixture from edukors_ai_cli 0.2.2, whose keyword reading ignored that order.)
+  // it is set aside here, so the keywords are read from the person's own text.
   // The list of attached files the library adds after the words is set aside too.
   const lastParagraph = (text) => text.replace(/\n\s*\n<document>\n[\s\S]*\n<\/document>\s*$/, "").replace(/\n\s*\nAttached files \(open them[\s\S]*$/, "").trim().split(/\n\s*\n/).pop() ?? "";
 
