@@ -877,7 +877,8 @@ globalThis.EdukorsAiAssistant = (() => {
 
 
   // The account's session limit (the 5-hour window), as the service reports it: one bar with the percentage used and,
-  // beside it, when the window resets (the time if today, the date and time otherwise; the full date in the tooltip).
+  // beside it, the time the window resets (only the time if today, the date and time otherwise; the full date and the
+  // word "resets" in the tooltip).
   // When the service has no such window, its most used window is shown instead; with no window at all, nothing is shown.
   function renderUsage() {
     const account = store.state.loaded ? store.activeAccount() : null;
@@ -901,7 +902,7 @@ globalThis.EdukorsAiAssistant = (() => {
     const lang = document.documentElement.lang || 'en';
     const today = date.toDateString() === now.toDateString();
     const time = new Intl.DateTimeFormat(lang, today ? { timeStyle: 'short' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
-    return t(today ? 'aiUsageResetsToday' : 'aiUsageResetsOn', { time });
+    return time;
   }
 
   function renderControls() {
