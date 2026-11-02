@@ -14,7 +14,7 @@
 //   Packaged: the shared registry, and this app's settings, skills, and workspaces under the user data folder.
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, session, shell } from "electron";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -128,7 +128,25 @@ export function startDesktopApp(options) {
   const windowOf = (event) => BrowserWindow.fromWebContents(event.sender) ?? undefined;
   const handle = (channel, fn) => ipcMain.handle(channel, (event, request) => (trusted(event) ? fn(event, request ?? {}) : { error: "Not allowed.", code: "UNTRUSTED" }));
 
-  handle("edukors:files:info", () => ({ documents: app.getPath("documents"), home: homedir(), platform: process.platform }));
+  // The last folder a file was opened from or saved to, kept across sessions: Open, Import, and the Save screen start
+  // there (the system's documents folder the first time, or when that folder is gone).
+  const LAST_FOLDER_FILE = join(APP_DIR, "last-folder.json");
+  let lastFolder;
+  async function startFolder() {
+    if (lastFolder === undefined) {
+      try { const folder = JSON.parse(await readFile(LAST_FOLDER_FILE, "utf8")).folder; lastFolder = typeof folder === "string" && (await stat(folder)).isDirectory() ? folder : null; }
+      catch { lastFolder = null; }
+    }
+    if (lastFolder && !(await stat(lastFolder).catch(() => null))?.isDirectory()) lastFolder = null;
+    return lastFolder || app.getPath("documents");
+  }
+  async function rememberFolder(folder) {
+    if (typeof folder !== "string" || folder === lastFolder) return;
+    lastFolder = folder;
+    try { await mkdir(APP_DIR, { recursive: true }); await writeFile(LAST_FOLDER_FILE, JSON.stringify({ folder })); } catch (error) { log("warn", `last folder: ${error.message}`); }
+  }
+
+  handle("edukors:files:info", async () => ({ documents: await startFolder(), home: homedir(), platform: process.platform }));
 
   handle("edukors:files:choose-folder", async (event, { defaultPath, title }) => {
     const result = await dialog.showOpenDialog(windowOf(event), { title: text(title), defaultPath: text(defaultPath, 1000), properties: ["openDirectory", "createDirectory"] });
@@ -145,6 +163,7 @@ export function startDesktopApp(options) {
       allowed = [extension];
     }
     const result = await writeFileSafely({ folder, name, extension, bytes, replace: replace === true, allowed });
+    if (result.folder) await rememberFolder(result.folder);
     if (result.path) await recent.add(result.path);
     return result;
   }));
@@ -152,7 +171,7 @@ export function startDesktopApp(options) {
   // Open always goes through the system's dialog; the page cannot name a path here (Recent has its own request).
   handle("edukors:files:open", (event, { title, filterName, allLabel }) => answer(async () => {
     const result = await dialog.showOpenDialog(windowOf(event), {
-      title: text(title), defaultPath: app.getPath("documents"), properties: ["openFile"],
+      title: text(title), defaultPath: await startFolder(), properties: ["openFile"],
       filters: [
         ...(OPEN_EXTENSIONS.length > DOCUMENT_EXTENSIONS.length ? [{ name: text(allLabel, 80) || "All supported files", extensions: OPEN_EXTENSIONS.map((e) => e.slice(1)) }] : []),
         { name: text(filterName, 80) || "Documents", extensions: DOCUMENT_EXTENSIONS.map((e) => e.slice(1)) },
@@ -160,6 +179,7 @@ export function startDesktopApp(options) {
     });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
     const file = await readOpenable(result.filePaths[0]);
+    await rememberFolder(file.folder);
     await recent.add(file.path);
     return { file };
   }));
@@ -173,11 +193,12 @@ export function startDesktopApp(options) {
     })).filter((filter) => filter.extensions.length);
     if (!filters.length) throw new FileError("FORMAT", "There is no format to import.");
     if (filters.length > 1) filters.unshift({ name: text(allLabel, 80) || "All supported files", extensions: [...new Set(filters.flatMap((f) => f.extensions))] });
-    const result = await dialog.showOpenDialog(windowOf(event), { title: text(title), defaultPath: app.getPath("documents"), properties: ["openFile"], filters });
+    const result = await dialog.showOpenDialog(windowOf(event), { title: text(title), defaultPath: await startFolder(), properties: ["openFile"], filters });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
     const chosen = result.filePaths[0], extension = extname(chosen).toLowerCase();
     if (!filters.some((f) => f.extensions.includes(extension.slice(1)))) throw new FileError("EXTENSION", `Files with the extension "${extension}" cannot be imported.`);
     const file = await readDocumentFile(chosen, { allowed: IMPORT_EXTENSIONS, maxBytes: MAX_IMPORT_BYTES });
+    await rememberFolder(file.folder);
     return { file: { name: file.name, file: file.file, extension, bytes: file.bytes } };
   }));
 

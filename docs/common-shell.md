@@ -134,6 +134,8 @@ Decided 2026-11-02, with the Text Editor as the first app built on Common. An ap
 
    Export formats Common knows: `html`, `pdf`, `png` (from the page's HTML; the host prints PDF and PNG) and `md`, `txt`, `docx` (bytes or text the app makes); the host writes only the formats the app lists in `startDesktopApp({ exportFormats })`, and the Export screen names them with the shared translations (`export<Id>`, `export<Id>Desc`). Import formats are the app's own ids (`import<Id>` names them; Common has names for `image`, `markdown`, `md`, `html`, `text`, `docx`, `pdf`).
 
+   `file.importCommand: false` hides Import while keeping `importFormats` (an app that opens those formats directly with `openExtensions` needs no Import). Open, Import, and the Save screen start in the last folder a file was opened from or saved to, which the desktop host keeps across sessions (`last-folder.json` in the app's data folder; the documents folder at first or when it is gone).
+
    Edit commands start unavailable; the app's editor enables them (`aria-disabled` on `#edit-actions .tool`) and handles their clicks.
 4. **Its main process** (`desktop/main.mjs`):
 

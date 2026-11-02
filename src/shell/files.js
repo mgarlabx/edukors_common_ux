@@ -118,7 +118,9 @@
       return true;
     }
     const result = await Dialogs.save({
-      t, title: as ? t('saveAsTitle') : t('saveTitle'), name: doc.name || EdukorsDocuments.nameOf(doc), folder: doc.folder || defaultFolder || t('defaultFolder'), extension: extension(),
+      // A new document starts in the last folder used (the desktop host remembers it across sessions).
+      t, title: as ? t('saveAsTitle') : t('saveTitle'), name: doc.name || EdukorsDocuments.nameOf(doc),
+      folder: doc.folder || (desktop ? (await desktop.info()).documents : defaultFolder) || t('defaultFolder'), extension: extension(),
       chooseFolder: desktop && (async current => (await desktop.chooseFolder({ defaultPath: current, title: t('chooseFolderTitle') })).folder),
       commit: values => host.save(doc, values)
     });
@@ -296,7 +298,8 @@
   if (!(config().exportFormats ?? ['html']).length) { button('export').classList.remove('document-action'); button('export').hidden = true; }
   button('reveal').addEventListener('click', () => reveal());
   button('import').removeAttribute('aria-description');
-  button('import').hidden = !importFormats().length;
+  // An app that opens other formats directly may turn Import off (file.importCommand: false) and keep its converters.
+  button('import').hidden = !importFormats().length || config().importCommand === false;
   button('import').addEventListener('click', importFile);
   button('recent').removeAttribute('aria-description');
   button('recent').setAttribute('aria-haspopup', 'menu');
