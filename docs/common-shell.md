@@ -119,7 +119,7 @@ Decided 2026-11-02, with the Text Editor as the first app built on Common. An ap
    ```
 
    `src/shell/boot.js` adds the stylesheet and the markup (title bar, toolbar, tabs, panels, status bar, Settings, Help) and loads, in order: Common's libraries, the shell (`src/shell/*.js`), the AI screens, the app's scripts, and the shell scripts that need the app (`desktop-menu.js`, `desktop-app.js`). When Common adds or reorders a file, apps do not change.
-2. **Its configuration** (`EdukorsAppConfig`): `name`, `version` (`v.YY.MM.DD`), `termsVersion`, `help` (Markdown by language), `file` (`extension`, `exportFormats`, `importFormats`), and, for a canvas, `canvas` and `contextualToolbar`. Without `canvas` the Insert group is left out; without `exportFormats` Export is hidden.
+2. **Its configuration** (`EdukorsAppConfig`): `name`, `version` (`v.YY.MM.DD`), `termsVersion`, `help` (Markdown by language), `file` (`extension`, `exportFormats`, `importFormats`), `insert` (the Insert buttons it offers: `text`, `shape`, `image`), and, for a canvas, `canvas` and `contextualToolbar` (a canvas app may name its Insert buttons in `canvas.insert`). Without either list the Insert group is left out; without `exportFormats` Export is hidden. Insert buttons start unavailable and the app handles their clicks.
 3. **Its document** (`EdukorsAppDocument`, defined by one of its scripts):
 
    | Member | Used by | Does |

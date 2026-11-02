@@ -100,7 +100,7 @@ While a document is open, two right-aligned toolbar toggles show the Sidebar and
 
 ## Shapes
 
-Insert shape opens a grid of ten shapes (rectangle, rounded rectangle, ellipse, triangle, right triangle, diamond, pentagon, hexagon, arrow, star), as in Slides. The catalog and picker live in `src/shapes/shapes.js`; the picker opens under the toolbar button or at the pointer when started from the context menu. Shape objects keep their type in `shapeType`. Changing the type of an existing shape is not available yet.
+`EdukorsShapes.svg(style, width, height)` draws a shape as standalone SVG (the Text Editor uses it for shapes in its documents and their exports). Insert shape opens a grid of ten shapes (rectangle, rounded rectangle, ellipse, triangle, right triangle, diamond, pentagon, hexagon, arrow, star), as in Slides. The catalog and picker live in `src/shapes/shapes.js`; the picker opens under the toolbar button or at the pointer when started from the context menu. Shape objects keep their type in `shapeType`. Changing the type of an existing shape is not available yet.
 
 ## Shared icons
 

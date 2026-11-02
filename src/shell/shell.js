@@ -36,12 +36,17 @@ for (const [key, label, icon] of [['undo', 'Undo', 'graph-Undo'], ['redo', 'Redo
   document.getElementById('edit-actions').append(separator);
 }
 for (const [key, label, icon] of [['cut', 'Cut', 'graph-Cut'], ['copy', 'Copy', 'graph-Copy'], ['paste', 'Paste', 'graph-Paste'], ['duplicate', 'Duplicate', 'slides-duplicate'], ['delete', 'Delete', 'graph-Trash']]) addButton('edit-actions', key, label, true, icon);
-// Insert group: the app chooses which object types it offers (EdukorsAppConfig.canvas.insert).
-for (const [key, label, icon] of [['insertText', 'Insert text', 'slides-text'], ['insertShape', 'Insert shape', 'slides-shape'], ['insertImage', 'Insert image', 'slides-image']]) addButton('insert-actions', key, label, true, icon);
-// Edit and Insert commands start unavailable; the app's document enables what it can do. An app without a canvas
-// (EdukorsAppConfig.canvas) has no Insert group.
+// Insert group: the app chooses what it offers, with EdukorsAppConfig.insert (any app) or EdukorsAppConfig.canvas.insert
+// (a canvas app; all three when it names none). No choice means no Insert group.
+{
+  const offered = EdukorsAppConfig.insert ?? EdukorsAppConfig.canvas?.insert ?? (EdukorsAppConfig.canvas ? ['text', 'shape', 'image'] : []);
+  for (const [kind, key, label, icon] of [['text', 'insertText', 'Insert text', 'slides-text'], ['shape', 'insertShape', 'Insert shape', 'slides-shape'], ['image', 'insertImage', 'Insert image', 'slides-image']]) {
+    if (offered.includes(kind)) addButton('insert-actions', key, label, true, icon);
+  }
+  if (!offered.length) { const group = document.getElementById('insert-actions'); group.previousElementSibling?.remove(); group.remove(); }
+}
+// Edit and Insert commands start unavailable; the app's document enables what it can do.
 for (const button of document.querySelectorAll('#edit-actions .tool, #insert-actions .tool')) button.setAttribute('aria-disabled', 'true');
-if (!EdukorsAppConfig.canvas) { const group = document.getElementById('insert-actions'); group.previousElementSibling?.remove(); group.remove(); }
 addButton('utility-actions', 'settings', 'Settings');
 addButton('utility-actions', 'help', 'Help');
 addButton('panel-actions', 'sidebar', 'Sidebar', true, 'slides-panel');

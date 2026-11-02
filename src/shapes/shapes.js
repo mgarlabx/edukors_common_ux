@@ -2,6 +2,8 @@
 // EdukorsShapes.types: shape ids. EdukorsShapes.paths: SVG paths in a 100×100 box (rect, rounded, and ellipse have none:
 // they are drawn with a rounded box). EdukorsShapes.icon(type, size) returns an SVG string for menus.
 // EdukorsShapes.pick({ x, y, t, onPick, restoreFocus }) opens a grid of shapes at a point, kept inside the window.
+// EdukorsShapes.svg(style, width, height) draws one shape as standalone SVG markup at that size in pixels (style:
+// { shapeType, fill, lineColor, lineWidth, lineStyle, opacity, shadow }), for apps that put shapes in a document.
 globalThis.EdukorsShapes = (() => {
   const types = ['rect', 'rounded', 'ellipse', 'triangle', 'rightTriangle', 'diamond', 'pentagon', 'hexagon', 'arrow', 'star'];
   const paths = {
@@ -75,5 +77,25 @@ globalThis.EdukorsShapes = (() => {
     options()[0].focus({ preventScroll: true });
   }
 
-  return Object.freeze({ types, paths, square, icon, pick, close });
+  // Standalone SVG for a shape. Values outside their types fall back to the defaults, so the markup is always safe.
+  function svg(style = {}, width = 100, height = 100) {
+    const color = (value, fallback) => (/^#[0-9a-f]{6}$/i.test(value) ? value : value === 'transparent' ? 'none' : fallback);
+    const number = (value, min, max, fallback) => (Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback);
+    const w = number(width, 1, 4000, 100), h = number(height, 1, 4000, 100);
+    const type = types.includes(style.shapeType) ? style.shapeType : 'rect';
+    const fill = color(style.fill, '#e9e7fb'), line = number(style.lineWidth, 0, 50, 2), lineColor = color(style.lineColor, '#6156db');
+    const lineStyle = ['solid', 'dashed', 'dotted'].includes(style.lineStyle) ? style.lineStyle : 'solid';
+    const dash = { solid: '', dashed: `${line * 4} ${line * 2.5}`, dotted: `0.1 ${line * 2.5}` }[lineStyle];
+    const stroke = line && lineColor !== 'none'
+      ? `stroke="${lineColor}" stroke-width="${line}" stroke-linejoin="round"${dash ? ` stroke-dasharray="${dash}"` : ''}${lineStyle === 'dotted' ? ' stroke-linecap="round"' : ''}`
+      : 'stroke="none"';
+    const inset = line / 2, iw = Math.max(0, w - line), ih = Math.max(0, h - line);
+    const body = type === 'ellipse' ? `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${iw / 2}" ry="${ih / 2}" fill="${fill}" ${stroke}/>`
+      : paths[type] ? `<svg x="${inset}" y="${inset}" width="${iw}" height="${ih}" viewBox="0 0 100 100" preserveAspectRatio="none" overflow="visible"><path d="${paths[type]}" fill="${fill}" ${stroke} vector-effect="non-scaling-stroke"/></svg>`
+      : `<rect x="${inset}" y="${inset}" width="${iw}" height="${ih}" rx="${type === 'rounded' ? Math.min(w, h) * 0.18 : 0}" fill="${fill}" ${stroke}/>`;
+    const opacity = number(style.opacity, 0, 100, 100);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" overflow="visible"${opacity < 100 ? ` opacity="${opacity / 100}"` : ''}${style.shadow ? ' style="filter: drop-shadow(0 6px 8px rgba(23, 32, 51, 0.45))"' : ''}>${body}</svg>`;
+  }
+
+  return Object.freeze({ types, paths, square, icon, pick, close, svg });
 })();
