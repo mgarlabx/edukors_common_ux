@@ -4,18 +4,20 @@ Every Edukors document is a zipped folder (a package) organized like the Microso
 
 Common owns the package layer (`src/package/package.js`, global `EdukorsPackage`). Each app owns the schemas of its own parts and its converters to and from Office formats.
 
-This document was rewritten from the code on 2026-11-02; the original was lost.
+This document was rewritten from the code on 2026-11-02, merged with a recovered draft of 2026-11-01 written before the layer existed (its layout proposal, legacy notes, and open decisions are kept here; the decisions it left open have since been taken or are listed under Open).
 
 ## Decisions
 
 - **Office's skeleton, JSON content.** The package files that Office reads (`[Content_Types].xml`, `_rels/*.rels`, `docProps/core.xml`, `docProps/app.xml`) are XML exactly as in OPC. The content parts (the document itself, slides, conversations) are JSON, which the apps already use. So an Edukors file is not an Office file and Office cannot open it directly; converters translate the content parts between JSON and Office's XML, and everything else carries over.
-- **Extensions `.e??x`**, lowercase on disk, in the pattern of `.docx`/`.pptx`: `.eslx` Slides, `.egrx` Graph, `.etex` Texts, `.ecmx` the Common demo (`EdukorsPackage.EXTENSIONS`, `extensionFor(app)`; an unknown app gets `.e` + its first two letters + `x`).
+- **Extensions `.e??x`**, in the pattern of `.docx`/`.pptx`: two letters name the app and the final `x` marks the package. `.eslx` Slides, `.egrx` Graph, `.etex` Texts, `.ecmx` the Common demo (`EdukorsPackage.EXTENSIONS`, `extensionFor(app)`; an unknown app gets `.e` + its first two letters + `x`). Written in lowercase on disk and matched ignoring case when opening; each new app chooses an unused two-letter code.
 - **Namespaces** (decided in session 3):
   - Edukors relationship types: `https://edukors.org/package/relationships/<name>` (for example `…/main`, `…/ai-conversation`).
   - Edukors content types: `application/vnd.edukors.<app>.<part>+json` (`EdukorsPackage.contentType(app, part)`; for example `application/vnd.edukors.common.document+json`).
   - Where Office already has a relationship type for the same meaning, use Office's: core properties, extended properties, thumbnail, and images (`http://schemas.openxmlformats.org/officeDocument/2006/relationships/image`). That keeps the relationships of a converted file valid without changes.
 - **One folder per app at the root**, like `ppt/` in PPTX and `word/` in DOCX, holding the main part and everything it owns. The folder is the app's name (`common/`, `slides/`, `text/`, `graph/`).
-- **Legacy files are not touched now.** The Slides editor's `.esf` is a ZIP but not OPC (it has a `manifest.json`); the Graph editor's `.egf` is a plain JSON file. Migrating them is deferred.
+- **Legacy files are not touched now** (migration comes later):
+  - Slides `.esf`: a standard ZIP with `manifest.json` at the root and the folders `masters/`, `layouts/`, `slides/`, `images/`, `fonts/`, and `ai/` (`edukors_slides_editor/src/main/package.ts`). Not OPC: no `[Content_Types].xml`, no relationships, no `docProps/`.
+  - Graph `.egf`: a single JSON file, not a ZIP (`edukors_graph_editor/README.md`). Adopting the package changes it more than it changes Slides.
 
 ## Layout
 
@@ -23,7 +25,7 @@ This document was rewritten from the code on 2026-11-02; the original was lost.
 [Content_Types].xml                 content type of every part (a Default per extension, Overrides where needed)
 _rels/.rels                         the package's relationships: main part, core and extended properties, thumbnail
 docProps/core.xml                   title, creator, language of the content, created, modified (Dublin Core, as in Office)
-docProps/app.xml                    Application "Edukors <app>", AppVersion
+docProps/app.xml                    Application "Edukors <app>", AppVersion (the release, v.YY.MM.DD)
 docProps/thumbnail.png              optional preview
 <app>/<main part>.json              the document (reached from _rels/.rels by the type …/relationships/main)
 <app>/_rels/<main part>.json.rels   relationships of the main part (to its media, sub-parts, conversations)
@@ -56,15 +58,16 @@ The proposal for the apps that convert to Office (each app decides its own part 
 | `ppt/slideMasters/slideMaster1.xml` | `slides/slideMasters/slideMaster1.json` | `word/footnotes.xml` | `text/footnotes.json` |
 | `ppt/theme/theme1.xml` | `slides/theme/theme1.json` | `word/theme/theme1.xml` | `text/theme/theme1.json` |
 | `ppt/media/image1.png` | `slides/media/image1.png` | `word/media/image1.png` | `text/media/image1.png` |
+| `ppt/fonts/font1.fntdata` | `slides/fonts/font1.woff2` | `word/fonts/font1.odttf` | `text/fonts/font1.woff2` |
 | `ppt/slides/_rels/slide1.xml.rels` | `slides/slides/_rels/slide1.json.rels` | `word/_rels/document.xml.rels` | `text/_rels/document.json.rels` |
 | `docProps/core.xml`, `app.xml`, `thumbnail.*` | the same | the same | the same |
 
-What a converter does: renames the app folder (`slides/` ↔ `ppt/`, `text/` ↔ `word/`), translates each content part between JSON and Office's XML, rewrites the content types of those parts, and copies the rest (media bytes, relationship files with their ids, `docProps`). Edukors-only parts (AI conversations, anything Office has no place for) are left out when exporting; Office-only parts the app does not understand are dropped when importing.
+What a converter does: renames the app folder (`slides/` ↔ `ppt/`, `text/` ↔ `word/`), translates each content part between JSON and Office's XML, rewrites the content types of those parts, and copies the rest (media bytes, relationship files with their ids, `docProps`). Edukors-only parts (AI conversations, anything Office has no place for) are left out when exporting; Office-only parts the app does not understand are dropped when importing. Fonts change format in both directions (Office embeds obfuscated or subset fonts). The 2026-11-01 draft named Slides' masters and layouts `slides/masters/master1.json` and `slides/layouts/layout1.json`; this version keeps Office's names (`slideMasters/`, `slideLayouts/`) so the mapping stays one to one.
 
 ## Rules
 
 - **Parts reach each other only through relationships** (`Id`, `Type`, `Target`, optionally `TargetMode="External"`), never by paths written inside the content. A relationship's target is relative to the folder of the part that owns it; `/x` is relative to the package root. Content refers to a relationship by its id (the Common demo's image objects keep `imageRel: "rIdImg1"`).
-- **Part names** are relative, unique ignoring case, at most 240 characters (120 per segment), with no `.` or `..` segments, no empty segments, no backslash or `< > : " | ? *` or control characters, no encoded separators (`%2F`, `%5C`), no segment ending in a dot or space, and no names Windows reserves (`CON`, `NUL`, `COM1`, …). So a package unpacks the same on macOS, Windows, and Linux.
+- **Part names** (the rule Slides' `validName` already applied, extended) are relative, unique ignoring case, at most 240 characters (120 per segment), with no `.` or `..` segments, no empty segments, no backslash or `< > : " | ? *` or control characters, no encoded separators (`%2F`, `%5C`), no segment ending in a dot or space, and no names Windows reserves (`CON`, `NUL`, `COM1`, …). So a package unpacks the same on macOS, Windows, and Linux.
 - **Reserved names:** `[Content_Types].xml`, any `_rels/` folder, `docProps/core.xml`, and `docProps/app.xml` belong to the package; apps cannot name parts there.
 - **Compression:** formats that are already compressed (PNG, JPEG, GIF, WebP, AVIF, WOFF, MP3, M4A, MP4, WebM, ZIP) are stored; everything else is deflated, unless deflating would make it larger. `[Content_Types].xml` is the first entry, as Office writes it.
 - **Language** in `docProps/core.xml` (`dc:language`) is the language of the content, never the interface language.
