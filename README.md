@@ -66,11 +66,12 @@ New (toolbar) and the + button in the tab row open sample document fixtures name
 
 Formatting patterns repeat across apps, so Common owns them in `src/format/format-controls.js` (`EdukorsFormat.render(container, { groups, state, t, onChange, options })`), modeled on the Slides format bar:
 
+- `blockStyle`: the paragraph's style in a list (normal text, headings 1–3, quote, code; an app may pass its own list as `options.blockStyles`).
 - `text`: bold, italic, underline, strikethrough, subscript and superscript (one at a time), font size, font family, text color.
 - `shape`: line width, line style (solid, dashed, dotted), line color, fill (including no fill), shadow, keep proportions, opacity.
 - `align`: left, center, right, justify (one at a time).
 - `lists`: bulleted or numbered (one at a time; pressing the active one turns lists off).
-- `link`: a popover with the link address, Apply, Remove link, and Create QR code. Create QR code does not touch the text: it reports the `createQr` action with the address, and the app adds a QR image (`src/qr/qr.js`, no dependencies) that behaves like any other image. The panel slides left so it stays inside the window. Only http, https, and mailto are accepted; a bare domain such as `edukors.org` becomes `https://edukors.org`. Other schemes, such as `javascript:`, are rejected with a message. The address field takes focus, so the app must keep its selection while the popover is open.
+- `link`: a popover with the link address, Apply, Remove link, and Create QR code. Create QR code does not touch the text: it reports the `createQr` action with the address, and the app adds a QR image (`src/qr/qr.js`, no dependencies) that behaves like any other image. The panel slides left so it stays inside the window. Only http, https, and mailto are accepted; a bare domain such as `edukors.org` becomes `https://edukors.org`. Apps without pictures hide Create QR code with `options.linkQr: false`. Other schemes, such as `javascript:`, are rejected with a message. The address field takes focus, so the app must keep its selection while the popover is open.
 - `valign`: top, middle, bottom (one at a time).
 - `image`: Replace image (reported to the app as the `replaceImage` action; the demo opens the system file browser), Crop (toggle), keep proportions, border (line width, style, and color, as in `shape`), shadow, and opacity.
 - `arrange`: bring to front, send to back (actions the app handles). The bar shows them at its right end.

@@ -128,8 +128,11 @@ Decided 2026-11-02, with the Text Editor as the first app built on Common. An ap
    | `fromBytes(bytes)` → content | Open, Recent | reads and checks a file; throws an Error with a message for the person |
    | `adopt(doc, content)` | Open, Recent, Import | puts content into a new document tab (and its AI conversations) |
    | `exportPage({ title })` → `{ html, width, height }` | Export (optional) | the page as one self-contained HTML document |
+| `exportFile({ doc, format, title })` → `{ html, width, height }` or `{ data }` | Export (optional, takes precedence) | HTML for `html`, `pdf`, `png` (the host prints PDF and PNG), or ready text or bytes for `md`, `txt`, `docx` |
    | `importFile({ format, name, extension, bytes, t })` → content | Import (optional) | converts another format, checked as strictly as a file |
    | `selectAll()` | Select All (optional) | selects everything in the document |
+
+   Export formats Common knows: `html`, `pdf`, `png` (from the page's HTML; the host prints PDF and PNG) and `md`, `txt`, `docx` (bytes or text the app makes); the host writes only the formats the app lists in `startDesktopApp({ exportFormats })`, and the Export screen names them with the shared translations (`export<Id>`, `export<Id>Desc`). Import formats are the app's own ids (`import<Id>` names them; Common has names for `image`, `markdown`, `md`, `html`, `text`, `docx`, `pdf`).
 
    Edit commands start unavailable; the app's editor enables them (`aria-disabled` on `#edit-actions .tool`) and handles their clicks.
 4. **Its main process** (`desktop/main.mjs`):

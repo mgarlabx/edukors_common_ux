@@ -43,9 +43,10 @@
     },
     async export(doc, { name, folder, format, progress }) {
       progress(10);
-      const { html, width, height } = await app().exportPage({ title: name });
+      // exportFile({ doc, format, title }) → { html, width, height } or { data }; apps with only a page give exportPage.
+      const out = app().exportFile ? await app().exportFile({ doc, format, title: name }) : await app().exportPage({ title: name });
       progress(40);
-      const result = await desktop.export({ folder, name, format, html, width, height });
+      const result = await desktop.export({ folder, name, format, html: out.html, data: out.data, width: out.width, height: out.height });
       if (result.error) return { error: result.error };
       progress(100);
       doc.lastExport = result.path;

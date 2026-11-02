@@ -8,6 +8,7 @@
 //   link:   popover with address (http, https, mailto) and a Create QR code button (reported as the `createQr` action with the address); apply and remove
 //   image:  replace (an action the app handles), crop toggle, keep proportions, border (line width, style, color), shadow, opacity
 //   arrange: bring to front, send to back (actions the app handles)
+//   blockStyle: the paragraph's style (normal, headings 1–3, quote, code; the app may pass its own list as options.blockStyles)
 // The library only renders controls and reports changes: onChange(property, value). The app applies them to its content
 // and passes the selection's current values back in `state`. Buttons and menus never take the focus on pointer down,
 // so a text selection in the editing surface stays selected (as in Slides).
@@ -22,6 +23,8 @@ globalThis.EdukorsFormat = (() => {
     fontFamilies: ['Arial', 'Georgia', 'Times New Roman', 'Verdana', 'Trebuchet MS', 'Courier New'],
     lineWidths: [0, 1, 2, 4, 8],
     lineStyles: ['solid', 'dashed', 'dotted'],
+    // Paragraph styles for the blockStyle group: the value reported to the app and the translation key of its name.
+    blockStyles: [['paragraph', 'fmtStyleNormal'], ['heading1', 'fmtHeading1'], ['heading2', 'fmtHeading2'], ['heading3', 'fmtHeading3'], ['quote', 'fmtQuote'], ['code', 'fmtCodeBlock']],
     // Limits for typed sizes. Typed values are rounded to `step` and clamped; invalid input restores the previous value.
     fontSizeRange: { min: 1, max: 400, step: 1 },
     lineWidthRange: { min: 0, max: 50, step: 0.5 }
@@ -197,7 +200,7 @@ globalThis.EdukorsFormat = (() => {
   }
 
   // Link popover: the address field takes the focus (the app must keep its selection while it is open).
-  function linkPopover({ state, t, change, action }) {
+  function linkPopover({ state, t, change, action, options = {} }) {
     const wrapper = el('div', { class: 'pick' });
     const button = iconToggle({ id: 'link', label: t('fmtLink'), icon: 'graph-Link', pressed: !!state.link, onToggle: () => panel ? close() : open() });
     button.setAttribute('aria-haspopup', 'dialog');
@@ -217,6 +220,7 @@ globalThis.EdukorsFormat = (() => {
       const apply = el('button', { type: 'submit', class: 'small-button primary', text: t('fmtApplyLink') });
       // The QR code is a separate image made from the address. The text and its link stay as they are.
       const qrButton = el('button', { type: 'button', class: 'small-button qr-button', text: t('fmtCreateQr') });
+      qrButton.hidden = options.linkQr === false; // apps without pictures (options.linkQr: false) do not offer it
       qrButton.addEventListener('click', () => {
         const url = safeLink(input.value);
         if (!url) { error.textContent = t('fmtInvalidUrl'); input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
@@ -349,6 +353,12 @@ globalThis.EdukorsFormat = (() => {
   }
 
   const groups = {
+    // The style of the paragraph at the selection; a mixed selection shows an empty value.
+    blockStyle: ({ state, t, change, options }) => {
+      const current = options.blockStyles.find(([value]) => value === state.blockStyle);
+      return [pick({ id: 'blockStyle', label: t('fmtBlockStyle'), value: current ? t(current[1]) : '', wide: true,
+        options: options.blockStyles.map(([value, key]) => ({ value, label: t(key), selected: value === state.blockStyle })), onPick: value => change('blockStyle', value) })];
+    },
     text: ({ state, t, change, options }) => [
       ...[['bold', 'fmtBold', 'B'], ['italic', 'fmtItalic', 'I'], ['underline', 'fmtUnderline', 'U'], ['strike', 'fmtStrike', 'S']].map(([key, label, text]) =>
         toggle({ id: key, label: t(label), text, pressed: state[key], onToggle: () => change(key, !state[key]) })),
@@ -379,7 +389,7 @@ globalThis.EdukorsFormat = (() => {
       .map(([value, label, icon]) => iconToggle({ id: `valign-${value}`, label: t(label), icon, pressed: state.valign === value, onToggle: () => change('valign', value, `valign-${value}`) })),
     lists: ({ state, t, change }) => [['bulleted', 'fmtBulleted', 'graph-List'], ['numbered', 'fmtNumbered', 'graph-ListOrdered']]
       .map(([value, label, icon]) => iconToggle({ id: `list-${value}`, label: t(label), icon, pressed: state.list === value, onToggle: () => change('list', state.list === value ? 'none' : value, `list-${value}`) })),
-    link: ({ state, t, change, action }) => [linkPopover({ state, t, change, action })],
+    link: ({ state, t, change, action, options }) => [linkPopover({ state, t, change, action, options })],
     // Arrange: actions the app performs on the selected object's stacking order.
     arrange: ({ t, action }) => [
       actionButton({ id: 'bringToFront', label: t('bringToFront'), icon: 'common-bringFront', onAction: () => action('bringToFront') }),
@@ -394,7 +404,7 @@ globalThis.EdukorsFormat = (() => {
       opacitySlider({ property: 'imageOpacity', state, t, change, live })
     ]
   };
-  const groupLabels = { arrange: 'fmtArrange', text: 'fmtText', shape: 'fmtShape', align: 'fmtAlign', valign: 'fmtVAlign', lists: 'fmtLists', link: 'fmtLink', image: 'fmtImage' };
+  const groupLabels = { blockStyle: 'fmtBlockStyle', arrange: 'fmtArrange', text: 'fmtText', shape: 'fmtShape', align: 'fmtAlign', valign: 'fmtVAlign', lists: 'fmtLists', link: 'fmtLink', image: 'fmtImage' };
 
   // Renders the requested groups into `container`, separated, and keeps focus on the control that changed.
   function render(container, { groups: names, state, t, onChange, options = {} }) {

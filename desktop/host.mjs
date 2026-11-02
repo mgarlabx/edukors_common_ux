@@ -95,7 +95,9 @@ export function startDesktopApp(options) {
   // ---------- Files ----------
   // What this app writes and opens. The page may ask for more; the host refuses anything outside these lists.
   const DOCUMENT_EXTENSIONS = documentExtensions.map((e) => e.toLowerCase());
-  const EXPORT_EXTENSIONS = Object.fromEntries(Object.entries({ html: ".html", pdf: ".pdf", png: ".png" }).filter(([format]) => exportFormats.includes(format)));
+  // PDF and PNG are rendered here from the page's HTML; the other formats come from the page ready to write.
+  const RENDERED = new Set(["pdf", "png"]);
+  const EXPORT_EXTENSIONS = Object.fromEntries(Object.entries({ html: ".html", pdf: ".pdf", png: ".png", md: ".md", txt: ".txt", docx: ".docx" }).filter(([format]) => exportFormats.includes(format)));
   // Files other formats can be imported from (the page converts them into a new, unsaved document). The page's list
   // of formats only narrows this one.
   const IMPORT_EXTENSIONS = importExtensions.map((e) => e.toLowerCase());
@@ -198,13 +200,20 @@ export function startDesktopApp(options) {
     }
   }
 
-  handle("edukors:files:export", (event, { folder, name, format, html, width, height }) => answer(async () => {
+  // { html, width, height } for HTML, PDF, and PNG; { data } (text or bytes) for the formats the page makes itself.
+  handle("edukors:files:export", (event, { folder, name, format, html, data: given, width, height }) => answer(async () => {
     const extension = EXPORT_EXTENSIONS[format];
     if (!extension) throw new FileError("FORMAT", "This format is not available.");
-    if (typeof html !== "string" || html.length > 200 * 2 ** 20) throw new FileError("DATA", "There is nothing to export.");
-    const w = Number(width), h = Number(height);
-    if (!(w >= 50 && w <= 8000 && h >= 50 && h <= 8000)) throw new FileError("DATA", "The page size is not valid.");
-    const data = format === "html" ? html : await renderExport(format, html, w, h);
+    let data;
+    if (format === "html" || RENDERED.has(format)) {
+      if (typeof html !== "string" || html.length > 200 * 2 ** 20) throw new FileError("DATA", "There is nothing to export.");
+      const w = Number(width), h = Number(height);
+      if (RENDERED.has(format) && !(w >= 50 && w <= 8000 && h >= 50 && h <= 8000)) throw new FileError("DATA", "The page size is not valid.");
+      data = format === "html" ? html : await renderExport(format, html, w, h);
+    } else {
+      if (!(typeof given === "string" || given instanceof Uint8Array)) throw new FileError("DATA", "There is nothing to export.");
+      data = given;
+    }
     // Exporting again overwrites the previous export, so replace is always on.
     const result = await writeFileSafely({ folder, name, extension, bytes: data, replace: true, allowed: Object.values(EXPORT_EXTENSIONS) });
     return { path: result.path };
