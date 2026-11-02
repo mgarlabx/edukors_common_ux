@@ -1,4 +1,6 @@
 node_modules/
 .DS_Store
 release/
-docs/
+# Internal notes, and a document that is still empty (to be recovered).
+docs/session-handoff.md
+docs/document-package.md
