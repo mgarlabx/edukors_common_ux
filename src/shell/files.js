@@ -68,18 +68,27 @@ globalThis.EdukorsLoading = (() => {
 
   // ----- Desktop host: real files -----
   const desktopHost = {
-    async save(doc, { name, folder, replace }) {
+    // check: saving over the document's own file asks the host to compare the file's fingerprint first ({ conflict }).
+    async save(doc, { name, folder, replace, check = false }) {
       const base = withoutExtension(name, extension());
-      const { bytes, committed } = await app().toBytes(doc, { name: base });
-      const result = await desktop.save({ folder, name: base, extension: extension(), bytes, replace });
-      if (result.exists) return { exists: true };
-      if (result.error) return { error: result.error };
-      // Saved in the app's format: from now on it is that file (a document opened from another format leaves it).
-      Object.assign(doc, { saved: true, name: base, folder: result.folder, file: result.file, path: result.path, originFormat: null });
-      document.dispatchEvent(new CustomEvent('edukors:document-saved', { detail: { doc, committed } }));
-      EdukorsAiAssistant.documentSaved(doc);
-      EdukorsDocuments.refresh();
-      return {};
+      EdukorsDocuments.setSaving(doc, true);
+      try {
+        // The conversations as written: changes made while the file is written stay unsaved.
+        const signature = EdukorsAiAssistant.signature(doc);
+        const { bytes, committed } = await app().toBytes(doc, { name: base });
+        const own = check && doc.saved && doc.fingerprint && doc.name === base && doc.folder === folder;
+        const result = await desktop.save({ folder, name: base, extension: extension(), bytes, replace, expected: own ? doc.fingerprint : undefined });
+        if (result.conflict) return { conflict: result.conflict };
+        if (result.exists) return { exists: true };
+        if (result.error) return { error: result.error };
+        // Saved in the app's format: from now on it is that file (a document opened from another format leaves it).
+        Object.assign(doc, { saved: true, name: base, folder: result.folder, file: result.file, path: result.path, originFormat: null, fingerprint: result.fingerprint, recovered: false });
+        EdukorsAiAssistant.markSaved(doc, signature);
+        document.dispatchEvent(new CustomEvent('edukors:document-saved', { detail: { doc, committed } }));
+        EdukorsAiAssistant.documentSaved(doc);
+        EdukorsDocuments.refresh();
+        return {};
+      } finally { EdukorsDocuments.setSaving(doc, false); }
     },
     async export(doc, { name, folder, format, replace, progress }) {
       progress(10);
@@ -125,6 +134,12 @@ globalThis.EdukorsLoading = (() => {
   const host = desktop ? desktopHost : simulatedHost;
 
   // ----- Commands -----
+  const askConflict = (doc, kind) => Dialogs.confirm({
+    t, title: Dialogs.fill(t('conflictTitle'), { name: doc.file || EdukorsDocuments.nameOf(doc) }),
+    message: t(kind === 'missing' ? 'conflictMissing' : 'conflictChanged'), primary: t('replaceFile')
+  });
+  // A document that has no file yet is saved (the Save screen asks where); true once it has a file.
+  const saveFirst = async doc => doc.saved || await save({ doc });
   // Writes a document opened from another format back into its file, in that format. The first time, the person
   // confirms (or chooses the app's own format instead).
   async function saveOriginal(doc) {
@@ -134,10 +149,19 @@ globalThis.EdukorsLoading = (() => {
       if (choice === 'app') { Object.assign(doc, { saved: false, file: undefined, path: undefined, originFormat: null }); return save({ doc }); }
       doc.originConfirmed = true;
     }
+    EdukorsDocuments.setSaving(doc, true);
     try {
+      const signature = EdukorsAiAssistant.signature(doc);
       const out = await app().exportFile({ doc, format: doc.originFormat, title: doc.name });
-      const result = await desktop.save({ folder: doc.folder, name: doc.file.slice(0, -doc.originExt.length), extension: doc.originExt, bytes: out.data ?? out.html, replace: true });
+      const request = { folder: doc.folder, name: doc.file.slice(0, -doc.originExt.length), extension: doc.originExt, bytes: out.data ?? out.html, replace: true };
+      let result = await desktop.save({ ...request, expected: doc.fingerprint });
+      if (result.conflict) {
+        if (!(await askConflict(doc, result.conflict))) { Dialogs.toast({ t, message: t('saveCancelled') }); return false; }
+        result = await desktop.save(request);
+      }
       if (result.error) throw new Error(result.error);
+      Object.assign(doc, { fingerprint: result.fingerprint, recovered: false });
+      EdukorsAiAssistant.markSaved(doc, signature);
       document.dispatchEvent(new CustomEvent('edukors:document-saved', { detail: { doc } }));
       EdukorsAiAssistant.documentSaved(doc);
       EdukorsDocuments.refresh();
@@ -146,7 +170,7 @@ globalThis.EdukorsLoading = (() => {
     } catch (error) {
       Dialogs.toast({ t, message: fileMessage('saveFailed', { name: doc.file, reason: error.message }) });
       return false;
-    }
+    } finally { EdukorsDocuments.setSaving(doc, false); }
   }
 
   async function save({ as = false, doc = EdukorsDocuments.active() } = {}) {
@@ -154,7 +178,12 @@ globalThis.EdukorsLoading = (() => {
     if (!as && doc.originFormat && desktop) return saveOriginal(doc);
     // A document that already has a file is saved again without asking anything.
     if (doc.saved && !as) {
-      const result = await host.save(doc, { name: doc.name, folder: doc.folder, replace: true });
+      let result = await host.save(doc, { name: doc.name, folder: doc.folder, replace: true, check: true });
+      // The file changed on disk (another app, a sync) or is gone since it was opened or saved here: the person decides.
+      if (result.conflict) {
+        if (!(await askConflict(doc, result.conflict))) { Dialogs.toast({ t, message: t('saveCancelled') }); return false; }
+        result = await host.save(doc, { name: doc.name, folder: doc.folder, replace: true });
+      }
       if (result.error) { Dialogs.toast({ t, message: fileMessage('saveFailed', { name: doc.file, reason: result.error }) }); return false; }
       Dialogs.toast({ t, message: Dialogs.fill(t('savedToast'), { name: doc.file }) });
       return true;
@@ -173,7 +202,8 @@ globalThis.EdukorsLoading = (() => {
 
   async function exportDocument() {
     const doc = EdukorsDocuments.active();
-    if (!doc || !doc.saved) return;
+    // A document without a file is saved first: the export goes next to it, with its name.
+    if (!doc || !(await saveFirst(doc))) return;
     // HTML is always the first option; the name and the folder are those of the saved file.
     const result = await Dialogs.exportAs({ t, name: doc.name, folder: doc.folder, formats: formats(), commit: values => host.export(doc, values) });
     if (!result) return;
@@ -210,7 +240,7 @@ globalThis.EdukorsLoading = (() => {
   // becomes a document named after it, in its folder. If the app can write that format back (file.saveOriginal and
   // startDesktopApp's saveExtensions), Save writes into the file itself, after a first confirmation; otherwise the
   // document has no file of its own, and Save asks for a name and saves in the app's format.
-  async function adoptFile({ path, name, folder, file: fileName, bytes }) {
+  async function adoptFile({ path, name, folder, file: fileName, bytes, fingerprint }) {
     const open = EdukorsDocuments.list().find(doc => doc.path === path || doc.origin === path);
     if (open) { EdukorsDocuments.activate(open.id); return; }
     const dot = fileName.lastIndexOf('.'), ext = dot > 0 ? fileName.slice(dot).toLowerCase() : '';
@@ -223,7 +253,7 @@ globalThis.EdukorsLoading = (() => {
         // into this file; otherwise Save asks where to save it in the app's format.
         const back = config().saveOriginal?.[format.id];
         const doc = back
-          ? EdukorsDocuments.add({ saved: true, name, folder, file: fileName, path, origin: path, originFormat: back, originExt: fileName.slice(dot) })
+          ? EdukorsDocuments.add({ saved: true, name, folder, file: fileName, path, origin: path, originFormat: back, originExt: fileName.slice(dot), fingerprint })
           : EdukorsDocuments.add({ name, folder, origin: path });
         app().adopt(doc, converted);
         EdukorsDocuments.activate(doc.id);
@@ -233,7 +263,7 @@ globalThis.EdukorsLoading = (() => {
     let content;
     try { content = await app().fromBytes(bytes); }
     catch (error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: fileName, reason: error.message }) }); return; }
-    const doc = EdukorsDocuments.add({ saved: true, name, folder, file: fileName, path });
+    const doc = EdukorsDocuments.add({ saved: true, name, folder, file: fileName, path, fingerprint });
     app().adopt(doc, content);
     EdukorsDocuments.activate(doc.id);
   }
@@ -339,7 +369,7 @@ globalThis.EdukorsLoading = (() => {
 
   // The window asks before closing while any document has unsaved changes.
   function reportUnsaved() {
-    desktop.setDirty(EdukorsDocuments.list().some(doc => doc.modified), { message: t('closeUnsavedMessage'), discard: t('closeWithoutSaving'), cancel: t('cancel') });
+    desktop.setDirty(EdukorsDocuments.list().some(EdukorsDocuments.isModified), { message: t('closeUnsavedMessage'), discard: t('closeWithoutSaving'), cancel: t('cancel') });
   }
 
   const button = key => document.querySelector(`[data-command="${key}"]`);
@@ -385,6 +415,116 @@ globalThis.EdukorsLoading = (() => {
     event.preventDefault();
     if (document.querySelector('dialog[open]') || !EdukorsDocuments.active()) return;
     save({ as: event.shiftKey });
+  });
+
+  // ----- Drafts (desktop) -----
+  // A document with unsaved changes is kept as a draft in the app's data folder a moment after it changes, so a crash
+  // loses little; the next start offers to recover drafts no window owns. Saving or closing a document removes its
+  // draft. The bytes come from EdukorsAppDocument.draftBytes(doc) when the app has it (for example to pack them outside
+  // the page), else from toBytes(doc, { draft: true }). Apps say that a document changed with edukors:document-changed
+  // ({ id }); for apps that do not, documents with unsaved changes are kept again every 30 seconds.
+  const drafts = new Map(); // doc id → { key, timer, written, signalled }
+  function draftOf(doc) {
+    if (!drafts.has(doc.id)) drafts.set(doc.id, { key: `draft-${crypto.randomUUID()}`, timer: 0, written: false, signalled: false });
+    return drafts.get(doc.id);
+  }
+  function forgetDraft(id) {
+    const entry = drafts.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    drafts.delete(id);
+    if (entry.written) desktop.drafts.remove(entry.key).catch(() => {});
+  }
+  function keepDraft(doc, delay = 3000) {
+    if (!desktop?.drafts || !doc) return;
+    if (!EdukorsDocuments.list().includes(doc)) { forgetDraft(doc.id); return; }
+    const entry = draftOf(doc);
+    clearTimeout(entry.timer);
+    if (!EdukorsDocuments.isModified(doc)) {
+      if (entry.written) { entry.written = false; desktop.drafts.remove(entry.key).catch(() => {}); }
+      return;
+    }
+    entry.timer = setTimeout(async () => {
+      if (!EdukorsDocuments.list().includes(doc) || !EdukorsDocuments.isModified(doc)) return;
+      try {
+        const bytes = app().draftBytes ? await app().draftBytes(doc) : (await app().toBytes(doc, { name: doc.name || EdukorsDocuments.nameOf(doc), draft: true })).bytes;
+        const result = await desktop.drafts.write({ key: entry.key, bytes, name: doc.name || EdukorsDocuments.nameOf(doc), path: doc.path || '' });
+        if (!result?.error && drafts.get(doc.id) === entry) entry.written = true;
+      } catch { /* a draft is a safety net: the next change tries again */ }
+    }, delay);
+  }
+  const docById = id => EdukorsDocuments.list().find(doc => doc.id === id);
+  async function recoverDrafts() {
+    const { drafts: found = [] } = await desktop.drafts.list();
+    if (!found.length) return;
+    const take = await Dialogs.confirm({ t, title: t('recoverTitle'), message: Dialogs.fill(t('recoverBody'), { n: found.length }), primary: t('recover'), cancel: t('discard') });
+    for (const item of found) {
+      if (take) {
+        try {
+          const { bytes, error } = await desktop.drafts.read(item.key);
+          if (error) throw new Error(error);
+          const content = await app().fromBytes(bytes);
+          // A recovered document has no file (its original, if any, is untouched) and has unsaved changes.
+          const doc = EdukorsDocuments.add({ name: Dialogs.fill(t('recoveredName'), { name: item.name || t('untitled') }), recovered: true });
+          app().adopt(doc, content);
+          EdukorsDocuments.activate(doc.id);
+          keepDraft(doc, 0);
+        } catch (error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: item.name, reason: error.message }) }); }
+      }
+      await desktop.drafts.remove(item.key).catch(() => {});
+    }
+  }
+  if (desktop?.drafts) {
+    document.addEventListener('edukors:document-changed', event => { const doc = docById(event.detail?.id); if (doc) { draftOf(doc).signalled = true; keepDraft(doc); } });
+    for (const type of ['edukors:document-modified', 'edukors:conversations-changed']) document.addEventListener(type, event => keepDraft(docById(event.detail?.id)));
+    document.addEventListener('edukors:document-saved', event => keepDraft(event.detail?.doc));
+    document.addEventListener('edukors:documents-changed', () => {
+      const open = new Set(EdukorsDocuments.list().map(doc => doc.id));
+      for (const id of [...drafts.keys()]) if (!open.has(id)) forgetDraft(id);
+    });
+    setInterval(() => { for (const doc of EdukorsDocuments.list()) if (EdukorsDocuments.isModified(doc) && !drafts.get(doc.id)?.signalled) keepDraft(doc, 0); }, 30000);
+    // Once the app's scripts have loaded (they turn bytes into documents).
+    const recover = () => recoverDrafts().catch(() => {});
+    if (document.readyState === 'complete') setTimeout(recover); else addEventListener('load', recover, { once: true });
+  }
+
+  // ----- Files to insert (pictures, fonts) -----
+  // kinds: ['image'] and/or ['font']. Desktop: the system's dialog, starting in the last folder used for inserting, else
+  // the document's folder. Browser: a file input. → [{ name, file, extension, mime, bytes }] (empty when cancelled).
+  const MIMES = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif',
+    '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf'
+  };
+  async function pickFiles({ kinds = ['image'], multiple = false, doc = EdukorsDocuments.active() } = {}) {
+    const title = t(kinds.length === 1 && kinds[0] === 'image' ? 'pickImagesTitle' : 'pickFilesTitle');
+    if (desktop) {
+      const result = await desktop.pick({ title, kinds, multiple, folder: doc?.folder });
+      if (result.error) { Dialogs.toast({ t, message: fileMessage('pickFailed', { reason: result.error }) }); return []; }
+      return result.canceled ? [] : result.files;
+    }
+    const accept = Object.entries(MIMES).filter(([, mime]) => kinds.some(kind => mime.startsWith(kind === 'image' ? 'image/' : 'font/'))).map(([ext]) => ext);
+    return new Promise(resolve => {
+      const input = Object.assign(document.createElement('input'), { type: 'file', accept: accept.join(','), multiple });
+      input.addEventListener('change', async () => {
+        const files = [];
+        for (const file of input.files) {
+          const dot = file.name.lastIndexOf('.'), ext = dot > 0 ? file.name.slice(dot).toLowerCase() : '';
+          if (!accept.includes(ext) || file.size > 50 * 2 ** 20) continue;
+          files.push({ name: dot > 0 ? file.name.slice(0, dot) : file.name, file: file.name, extension: ext, mime: MIMES[ext], bytes: new Uint8Array(await file.arrayBuffer()) });
+        }
+        resolve(files);
+      });
+      input.addEventListener('cancel', () => resolve([]));
+      input.click();
+    });
+  }
+
+  // For apps: the same commands the toolbar runs.
+  globalThis.EdukorsFiles = Object.freeze({
+    save: options => save(options),
+    saveFirst: (doc = EdukorsDocuments.active()) => (doc ? saveFirst(doc) : Promise.resolve(false)),
+    export: () => exportDocument(),
+    pickFiles
   });
 
   // Closing a document that has unsaved changes asks first. Returns true when the document may close.

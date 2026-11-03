@@ -406,6 +406,32 @@ globalThis.EdukorsAiAssistant = (() => {
   const conversationTitle = conv => conv.items.find(item => item.kind === 'user')?.text.split('\n')[0].slice(0, 80) || t('aiUntitledConversation');
   const push = (conv, item) => { conv.items.push(item); if (conv === current()) renderThread(); return item; };
 
+  // ---------- Changes to save ----------
+  // A document's conversations are part of its file, so changing them is an unsaved change. The signature is what
+  // would be saved; it is compared, once per frame, with the one the document had when it was opened or last saved.
+  // The result is doc.conversationsModified (EdukorsDocuments.isModified combines it with the app's own doc.modified),
+  // announced with edukors:document-modified and edukors:conversations-changed.
+  const baselines = new Map(); // documentId → signature when opened or saved
+  const signatureOf = state => {
+    try { return JSON.stringify(EdukorsAiConversations.toPackage('common', [state.current, ...state.history].map(c => ({ ...c, updated: c.updated || '' }))).parts.map(part => part.content)); }
+    catch { return ''; }
+  };
+  let changeCheck = 0;
+  function checkChanges() {
+    changeCheck = 0;
+    for (const [id, state] of states) {
+      const doc = documents.get(id);
+      if (!doc) continue;
+      if (!baselines.has(id)) baselines.set(id, signatureOf(state));
+      const modified = signatureOf(state) !== baselines.get(id);
+      if (!!doc.conversationsModified === modified) continue;
+      doc.conversationsModified = modified;
+      document.dispatchEvent(new CustomEvent('edukors:conversations-changed', { detail: { id: doc.id } }));
+      document.dispatchEvent(new CustomEvent('edukors:document-modified', { detail: { id: doc.id } }));
+    }
+  }
+  const touch = () => { if (!changeCheck) changeCheck = requestAnimationFrame(checkChanges); };
+
   function closeSession(conv) {
     if (!conv.sessionId) return;
     const id = conv.sessionId;
@@ -618,6 +644,7 @@ globalThis.EdukorsAiAssistant = (() => {
   host.on('event', event => {
     const conv = bySession.get(event.sessionId);
     if (!conv) return;
+    touch();
     conv.lastEventAt = Date.now();
     switch (event.type) {
       case 'activity': conv.activity = event.phase; if (conv.running) stepTo(conv, event.phase); break;
@@ -833,6 +860,7 @@ globalThis.EdukorsAiAssistant = (() => {
   }
 
   function renderThread() {
+    touch();
     const conv = current();
     const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
     thread.replaceChildren(...(!conv || !conv.items.length ? [emptyView()] : conv.items.map(item => itemView(item, conv)).filter(Boolean)));
@@ -948,6 +976,7 @@ globalThis.EdukorsAiAssistant = (() => {
   }
 
   function render() {
+    touch();
     historyView.hidden = !showHistory;
     chatView.hidden = showHistory;
     if (showHistory) renderHistory(); else renderThread();
@@ -968,6 +997,7 @@ globalThis.EdukorsAiAssistant = (() => {
       closeSession(conv);
       states.delete(id);
       documents.delete(id);
+      baselines.delete(id);
     }
     if (!activeDoc) showHistory = false;
     render();
@@ -1014,12 +1044,24 @@ globalThis.EdukorsAiAssistant = (() => {
       const state = stateOf(doc);
       for (const conv of [state.current, ...state.history]) if (!conv.running) closeSession(conv);
     },
+    /**
+     * What would be saved now, to pass to markSaved once the file is written (conversations may change meanwhile).
+     */
+    signature(doc) { return signatureOf(stateOf(doc)); },
+    /** The document's conversations as written (signature taken before writing, or now): no longer a change to save. */
+    markSaved(doc, signature) {
+      const state = stateOf(doc);
+      baselines.set(app.documentId(doc), signature ?? signatureOf(state));
+      checkChanges();
+    },
     /** Conversations read from the document's package when it opens: they become its history. */
     restoreConversations(doc, list) {
       const state = stateOf(doc);
       const known = new Set([state.current.id, ...state.history.map(c => c.id)]);
       const restored = (list || []).filter(c => c && !known.has(c.id)).map(c => ({ ...blank(), ...c, tokens: { ...blank().tokens, ...c.tokens } }));
       state.history = [...state.history, ...restored].sort((a, b) => String(b.updated).localeCompare(String(a.updated))).slice(0, 40);
+      // What the file had is not a change; a recovered draft's conversations are part of the recovered changes.
+      baselines.set(app.documentId(doc), signatureOf(state));
       if (doc === activeDoc) render();
     }
   });

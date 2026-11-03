@@ -58,6 +58,8 @@ An app supplies four things. The full contract, with every option, is in [App in
    });
    ```
 
+   Options include `maxOpenBytes` (largest file of another format to open; 50 MB by default). `EDUKORS_HIDDEN=1` runs the app without showing any window (automated tests).
+
    The host runs everything the apps share: the AI assistant, files, Recent, import and export (only the extensions the app lists), documents the system opens (double-click, Open With), the macOS menu, the title bar, terms of use, and update checks.
 
 Apps built on Common today: the Text Editor (`mgarlabx/edukors_text_editor`) and the Slides editor (`edukors_slides_editor`). Use them as examples; the demo in `demo/` follows the same contract.
@@ -67,10 +69,10 @@ Apps built on Common today: the Text Editor (`mgarlabx/edukors_text_editor`) and
 | Area | Where | Notes |
 | --- | --- | --- |
 | Shell: toolbar, tabs, side panels, status bar, Settings, Help | `src/shell/` | See [Common application shell](docs/common-shell.md) |
-| Save, Open, Recent, Import, Export, Show in folder, close prompts, notices, opening indicator | `src/files/file-dialogs.js`, `src/shell/files.js`, `desktop/` | Real in the desktop app; simulated in memory in a browser |
+| Save, Open, Recent, Import, Export, Show in folder, close prompts, notices, opening indicator, "Saving…", changes made on disk, drafts and crash recovery, files to insert | `src/files/file-dialogs.js`, `src/shell/files.js`, `desktop/` | Real in the desktop app; simulated in memory in a browser. Apps call them through `EdukorsFiles`; see [Shared behaviour](docs/common-shell.md#shared-behaviour-apps-rely-on) |
 | Formatting controls (block style, text, shape, alignment, lists, link, image, arrange) | `src/format/format-controls.js` | `EdukorsFormat.render(container, { groups, state, t, onChange, options })`; the app applies the changes and passes the selection's values back as `state` |
 | Shapes catalog and picker | `src/shapes/shapes.js` | `EdukorsShapes.svg(style, width, height)` draws a shape as standalone SVG |
-| Context menu | `src/menu/context-menu.js` | |
+| Context menu | `src/menu/context-menu.js` | `EdukorsMenus.pressIn(iframe)` closes open menus for a press inside an iframe |
 | Icons | `src/icons/` | [Icon library](src/icons/README.md); browse them in `demo/icons.html` |
 | Markdown renderer (Help texts) | `src/markdown/markdown.js` | Builds DOM nodes, not HTML strings; links limited to http, https, mailto |
 | QR codes | `src/qr/qr.js` | No dependencies |

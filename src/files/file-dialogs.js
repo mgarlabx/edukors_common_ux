@@ -5,6 +5,7 @@
 //   EdukorsFileDialogs.save({ t, title, name, folder, extension, commit })       → { name, folder } | null
 //   EdukorsFileDialogs.exportAs({ t, name, folder, formats, format, commit })    → { name, folder, format } | null
 //                         (no name or folder fields: the export goes next to the original file, with the same name)
+//   EdukorsFileDialogs.confirm({ t, title, message, primary, cancel })             → true | false
 //   EdukorsFileDialogs.confirmClose({ t, name })                                  → 'save' | 'discard' | 'cancel'
 //   EdukorsFileDialogs.confirmSaveOriginal({ t, name, format, extension, note })   → 'original' | 'app' | 'cancel'
 //   EdukorsFileDialogs.toast({ t, message, action: { label, onClick } })
@@ -199,6 +200,22 @@ globalThis.EdukorsFileDialogs = (() => {
     });
   }
 
+  // A question with two answers (title, message, the primary button, the other one): true for the primary one. Escape,
+  // the close button, and the other button answer false.
+  function confirm({ t, title, message, primary, cancel }) {
+    return new Promise(resolve => {
+      const { dialog, body, footer, close } = frame({ t, title });
+      if (message) body.append(el('p', { class: 'file-hint', text: message }));
+      const no = button(cancel || t('cancel')), go = button(primary, 'primary');
+      footer.append(no, go);
+      const finish = present(dialog, value => resolve(value === true));
+      no.addEventListener('click', () => finish(false));
+      close.addEventListener('click', () => finish(false));
+      go.addEventListener('click', () => finish(true));
+      go.focus();
+    });
+  }
+
   // A short notice at the bottom of the window, announced to screen readers, with an optional action.
   function toast({ t, message, action, duration = 6000 }) {
     let region = document.getElementById('toast-region');
@@ -216,5 +233,5 @@ globalThis.EdukorsFileDialogs = (() => {
     return remove;
   }
 
-  return Object.freeze({ save, exportAs, confirmClose, confirmSaveOriginal, toast, fileNameProblem, fill });
+  return Object.freeze({ save, exportAs, confirm, confirmClose, confirmSaveOriginal, toast, fileNameProblem, fill });
 })();

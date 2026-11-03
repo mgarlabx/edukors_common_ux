@@ -99,3 +99,16 @@ globalThis.EdukorsContextMenu = (() => {
 
   return Object.freeze({ open, close, isOpen: () => !!current });
 })();
+
+// Menus and pickers close on a press outside them, seen by a pointerdown listener on the page. A press inside an
+// <iframe> never reaches the page, so an app whose content is an iframe calls EdukorsMenus.pressIn(iframe) when the
+// frame reports a press: every open menu, picker, and format-bar list closes as on any click outside it. The event
+// carries edukorsRelayed: true, so the app's own pointerdown listeners can tell it from a real press.
+globalThis.EdukorsMenus = Object.freeze({
+  pressIn(element) {
+    if (!element) return;
+    const event = new PointerEvent('pointerdown', { bubbles: true, composed: true, button: 0, isPrimary: true });
+    Object.defineProperty(event, 'edukorsRelayed', { value: true });
+    element.dispatchEvent(event);
+  }
+});

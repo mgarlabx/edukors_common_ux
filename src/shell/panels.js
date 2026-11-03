@@ -1,5 +1,5 @@
 // Right-aligned panel toggles: the sidebar (application content) and the AI assistant.
-// They are available only while a document is open, and both start closed. The sidebar opens on the left of the
+// They are available only while a document is open; whether each is open is remembered. The sidebar opens on the left of the
 // workspace and the assistant on the right; both can be open at once. An app without a sidebar (EdukorsAppConfig.sidebar:
 // false) has neither the panel nor its toggle. Both can be resized from their inner edge (see "Width" below).
 // The assistant's content (conversation, composer, account and model) belongs to src/ai/ui/ai-assistant.js.
@@ -8,7 +8,12 @@
     sidebar: document.getElementById('sidebar-panel'),
     assistant: document.getElementById('assistant-panel-side')
   }).filter(([, panel]) => panel));
-  const open = { sidebar: false, assistant: false };
+  // Whether each panel is open is remembered (this app's localStorage); the first time, the sidebar opens when the app
+  // asks for it (EdukorsAppConfig.sidebarOpen) and the assistant starts closed.
+  const openKey = key => `edukors.common.panel-open.${key}`;
+  const remembered = (key, fallback) => { try { const value = localStorage.getItem(openKey(key)); return value === null ? fallback : value === '1'; } catch { return fallback; } };
+  const open = { sidebar: remembered('sidebar', EdukorsAppConfig.sidebarOpen === true), assistant: remembered('assistant', false) };
+  const remember = key => { try { localStorage.setItem(openKey(key), open[key] ? '1' : '0'); } catch {} };
   let documentOpen = false;
 
   const messages = () => (EdukorsLanguages[document.documentElement.lang] || EdukorsLanguages.en).messages;
@@ -122,12 +127,14 @@
 
   for (const key of Object.keys(panels)) toggle(key).addEventListener('click', () => {
     open[key] = !open[key];
+    remember(key);
     render();
     if (open[key] && key === 'assistant') document.getElementById('assistant-input').focus();
   });
   for (const button of document.querySelectorAll('[data-close-panel]')) button.addEventListener('click', () => {
     const key = button.dataset.closePanel;
     open[key] = false;
+    remember(key);
     render();
     toggle(key).focus();
   });

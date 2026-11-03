@@ -1,6 +1,6 @@
 // Document tabs for the visual prototype. New opens a sample document fixture; nothing is created on disk.
 // Opening documents reveals the document-dependent toolbar actions; closing the last one returns to the closed workspace.
-// Export and Show in folder need a file on disk, so they are disabled (not hidden) until the document is saved once.
+// Show in folder needs a file on disk, so it is disabled (not hidden) until the document is saved once; Export saves first.
 // Saving is simulated in memory (files.js): nothing is written to disk.
 globalThis.EdukorsDocuments = {};
 (() => {
@@ -20,6 +20,9 @@ globalThis.EdukorsDocuments = {};
   const message = key => messages()[key] || EdukorsLanguages.en.messages[key];
   // A saved document takes the name of its file; a new one is "Untitled", "Untitled 2", and so on.
   const nameOf = doc => doc.name || (doc.number === 1 ? message('untitled') : `${message('untitled')} ${doc.number}`);
+  // Unsaved changes: the app's own (doc.modified), the AI conversations' (doc.conversationsModified, set by the
+  // assistant), or a document recovered from a draft that has not been saved since (doc.recovered).
+  const isModified = doc => !!doc && !!(doc.modified || doc.conversationsModified || doc.recovered);
 
   newButton.removeAttribute('aria-description');
   newTabButton.insertAdjacentHTML('afterbegin', EdukorsIcons.svg('graph-Plus'));
@@ -30,11 +33,15 @@ globalThis.EdukorsDocuments = {};
     const status = document.getElementById('document-status');
     status.replaceChildren();
     // Never saved: Unsaved. Saved and unchanged: Saved. Saved and changed since: Unsaved changes.
-    const dirty = !!active && (!active.saved || active.modified);
-    status.classList.toggle('is-unsaved', dirty);
-    if (active) {
+    const dirty = !!active && (!active.saved || isModified(active));
+    status.classList.toggle('is-unsaved', dirty && !active?.saving);
+    if (active?.saving) {
+      // While the host writes the file (setSaving): a small spinner and "Saving…".
+      status.innerHTML = '<span class="loading-spinner status-spinner" aria-hidden="true"></span>';
+      status.append(message('saving'));
+    } else if (active) {
       status.innerHTML = EdukorsIcons.svg('slides-file');
-      status.append(message(!active.saved ? 'unsaved' : active.modified ? 'modifiedState' : 'savedState'));
+      status.append(message(!active.saved ? 'unsaved' : isModified(active) ? 'modifiedState' : 'savedState'));
     }
   }
 
@@ -49,9 +56,10 @@ globalThis.EdukorsDocuments = {};
     // Edit commands (availability and actions) are handled by the sample document (sample-document.js).
     document.getElementById('edit-actions').setAttribute('aria-label', message('edit'));
     document.getElementById('insert-actions')?.setAttribute('aria-label', message('insert')); // absent in apps without a canvas
+    // Export saves a document that has no file first (files.js); Show in folder needs the file.
     for (const key of ['export', 'reveal']) {
       const button = document.querySelector(`[data-command="${key}"]`);
-      const disabled = !!active && !active.saved;
+      const disabled = key === 'reveal' && !!active && !active.saved;
       // aria-disabled keeps the button focusable, so keyboard users can read why it is unavailable.
       if (disabled) button.setAttribute('aria-disabled', 'true'); else button.removeAttribute('aria-disabled');
       const label = disabled ? `${message(key)} (${message('saveFirst')})` : message(key);
@@ -68,7 +76,7 @@ globalThis.EdukorsDocuments = {};
       const tab = document.createElement('div');
       tab.className = 'document-tab';
       tab.dataset.id = doc.id;
-      tab.classList.toggle('is-modified', !!doc.modified);
+      tab.classList.toggle('is-modified', isModified(doc));
       const select = document.createElement('button');
       select.type = 'button';
       select.className = 'document-tab-select';
@@ -77,7 +85,7 @@ globalThis.EdukorsDocuments = {};
       const label = document.createElement('span');
       label.textContent = nameOf(doc);
       select.title = nameOf(doc);
-      if (doc.modified) select.setAttribute('aria-label', `${nameOf(doc)}, ${message('modifiedState')}`);
+      if (isModified(doc)) select.setAttribute('aria-label', `${nameOf(doc)}, ${message('modifiedState')}`);
       select.append(label);
       const close = document.createElement('button');
       close.type = 'button';
@@ -106,10 +114,10 @@ globalThis.EdukorsDocuments = {};
     const doc = documents.find(item => item.id === event.detail.id);
     const tab = doc && tabList.querySelector(`[data-id="${doc.id}"]`);
     if (!tab) return;
-    tab.classList.toggle('is-modified', !!doc.modified);
+    tab.classList.toggle('is-modified', isModified(doc));
     renderStatus();
     const select = tab.querySelector('.document-tab-select');
-    if (doc.modified) select.setAttribute('aria-label', `${nameOf(doc)}, ${message('modifiedState')}`); else select.removeAttribute('aria-label');
+    if (isModified(doc)) select.setAttribute('aria-label', `${nameOf(doc)}, ${message('modifiedState')}`); else select.removeAttribute('aria-label');
   });
 
   const focusTab = id => tabList.querySelector(`[data-id="${id}"] .document-tab-select`)?.focus();
@@ -142,7 +150,7 @@ globalThis.EdukorsDocuments = {};
   async function close(id) {
     const doc = documents.find(item => item.id === id);
     // The host may ask about unsaved changes first (files.js); it answers false to keep the document open.
-    if (doc?.modified && EdukorsDocuments.beforeClose && !(await EdukorsDocuments.beforeClose(doc))) return;
+    if (isModified(doc) && EdukorsDocuments.beforeClose && !(await EdukorsDocuments.beforeClose(doc))) return;
     const index = documents.findIndex(doc => doc.id === id);
     documents.splice(index, 1);
     if (!documents.length) {
@@ -193,7 +201,9 @@ globalThis.EdukorsDocuments = {};
     add, discard,
     close: id => close(id),
     refresh: renderChrome,
-    nameOf
+    nameOf, isModified,
+    // While the host writes a document (files.js), the status bar says "Saving…".
+    setSaving(doc, saving) { doc.saving = !!saving; if (doc.id === activeId) renderStatus(); }
   });
   render();
 })();

@@ -13,8 +13,9 @@
 //   (automated tests: an empty one, never the person's accounts).
 //   Packaged: the shared registry, and this app's settings, skills, and workspaces under the user data folder.
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, session, shell } from "electron";
-import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { readFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -25,7 +26,7 @@ import { defaultDataDir } from "../src/ai/runtime/platform/paths.js";
 import { createHostDispatcher } from "../src/ai/runtime/host/dispatcher.js";
 import { createAppMethods } from "../src/ai/host/app-methods.js";
 import { startUpdateChecks, updatesOf } from "./updates.mjs";
-import { FileError, createRecentList, fileExists, readDocumentFile, revealablePath, writeFileSafely } from "./files-core.mjs";
+import { FileError, createRecentList, fileExists, readDocumentFile, revealablePath, targetFile, writeFileSafely } from "./files-core.mjs";
 
 
 // Common's own folder (the preload script lives here, also when Common sits in an app's node_modules).
@@ -34,16 +35,26 @@ const COMMON = fileURLToPath(new URL("..", import.meta.url));
 /**
  * Starts the app. options: appId (lowercase, used for data folders), name (shown in the window and menu), root (the
  * app's folder: its package.json and page), page ("index.html"), skills (unpackaged sample skills folder, "skills"),
- * documentExtensions ([".etex"]), importExtensions ([] : nothing to import), exportFormats (["html", "pdf", "png"]).
+ * documentExtensions ([".etex"]), importExtensions ([] : nothing to import), exportFormats (["html", "pdf", "png"]),
+ * maxOpenBytes (largest file of another format that Open, Recent, and Import read: 50 MB; at most 2 GB).
+ *
+ * EDUKORS_HIDDEN=1 (automated tests): no window is ever shown or focused, the Dock icon is hidden, hidden windows run
+ * at full speed, and there are no update checks.
  */
 export function startDesktopApp(options) {
   const {
     appId, name, root, page = "index.html", skills = "skills", documentExtensions,
-    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [], saveExtensions = [],
+    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [], saveExtensions = [], maxOpenBytes = 50 * 2 ** 20,
   } = options;
   if (!/^[a-z][a-z0-9-]*$/.test(appId ?? "") || !name || !root || !documentExtensions?.length) throw new Error("startDesktopApp needs appId, name, root, and documentExtensions.");
   const ROOT = root;
   const APP_ID = appId;
+  const HIDDEN = process.env.EDUKORS_HIDDEN === "1";
+  if (HIDDEN) {
+    for (const method of ["show", "showInactive", "focus", "moveTop"]) BrowserWindow.prototype[method] = function () {};
+    app.on("browser-window-created", (_event, window) => { if (window.isVisible()) window.hide(); window.webContents.setBackgroundThrottling(false); });
+    void app.whenReady().then(() => app.dock?.hide());
+  }
   const { values } = parseArgs({
     args: process.argv.slice(app.isPackaged ? 1 : 2),
     options: { shared: { type: "boolean", default: false }, "data-dir": { type: "string" }, verbose: { type: "boolean", default: false } },
@@ -104,7 +115,7 @@ export function startDesktopApp(options) {
   // Files of other formats that Open and Recent also accept: the page converts them into a document that has no file
   // of its own yet (Save asks for a name and saves in the app's format; the original is never written).
   const OPEN_EXTENSIONS = [...DOCUMENT_EXTENSIONS, ...openExtensions.map((e) => e.toLowerCase()).filter((e) => !DOCUMENT_EXTENSIONS.includes(e))];
-  const MAX_OPEN_BYTES = 50 * 2 ** 20;
+  const MAX_OPEN_BYTES = Math.min(2 * 2 ** 30, Math.max(2 ** 20, Number(maxOpenBytes) || 50 * 2 ** 20));
   // Of those, the formats a document opened from such a file can be saved back in (only into that very file).
   const SAVE_EXTENSIONS = saveExtensions.map((e) => e.toLowerCase()).filter((e) => OPEN_EXTENSIONS.includes(e) && !DOCUMENT_EXTENSIONS.includes(e));
   // PDF and PNG are rendered here from the page's HTML; the other formats come from the page ready to write.
@@ -113,11 +124,16 @@ export function startDesktopApp(options) {
   // Files other formats can be imported from (the page converts them into a new, unsaved document). The page's list
   // of formats only narrows this one.
   const IMPORT_EXTENSIONS = importExtensions.map((e) => e.toLowerCase());
-  const MAX_IMPORT_BYTES = 50 * 2 ** 20;
+  const MAX_IMPORT_BYTES = MAX_OPEN_BYTES;
   // Recent documents: kept here, in the app's data folder, and updated only after a real save or open.
   const recent = createRecentList({ file: join(APP_DIR, "recent.json"), allowed: OPEN_EXTENSIONS });
-  // A document of this app, or a file of another format Open accepts (at most 50 MB, like an import).
-  const readOpenable = (path) => readDocumentFile(path, { allowed: OPEN_EXTENSIONS, maxBytes: DOCUMENT_EXTENSIONS.includes(extname(path).toLowerCase()) ? undefined : MAX_OPEN_BYTES });
+  // A document of this app, or a file of another format Open accepts (at most maxOpenBytes, like an import). Each file
+  // read or written carries its fingerprint, so the page can tell, before saving over it, whether it changed on disk.
+  const fingerprintOf = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const readOpenable = async (path) => {
+    const file = await readDocumentFile(path, { allowed: OPEN_EXTENSIONS, maxBytes: DOCUMENT_EXTENSIONS.includes(extname(path).toLowerCase()) ? undefined : MAX_OPEN_BYTES });
+    return { ...file, fingerprint: fingerprintOf(file.bytes) };
+  };
 
   // Problems the person can act on come back as { error: message }; anything unexpected is logged and reported plainly.
   const answer = async (work) => {
@@ -156,7 +172,9 @@ export function startDesktopApp(options) {
     return result.canceled || !result.filePaths[0] ? { canceled: true } : { folder: result.filePaths[0] };
   });
 
-  handle("edukors:files:save", (event, { folder, name, extension, bytes, replace }) => answer(async () => {
+  // expected: the fingerprint the page has for the file it saves over. When the file is gone or no longer has it, nothing
+  // is written and the page asks ({ conflict: "missing" | "changed" }); it sends no `expected` to write anyway.
+  handle("edukors:files:save", (event, { folder, name, extension, bytes, replace, expected }) => answer(async () => {
     const lower = String(extension).toLowerCase();
     let allowed = DOCUMENT_EXTENSIONS;
     // Another format: only into a file that was opened (it is in Recent), replacing it.
@@ -165,10 +183,16 @@ export function startDesktopApp(options) {
       if (typeof folder !== "string" || typeof name !== "string" || !(await recent.has(join(folder, `${name}${extension}`)))) throw new FileError("ORIGINAL", "Only a file that was opened can be saved in its own format.");
       allowed = [extension];
     }
+    if (typeof expected === "string" && replace === true) {
+      const target = await targetFile({ folder, name, extension, allowed });
+      const current = await readFile(target).catch((error) => (error?.code === "ENOENT" ? null : Promise.reject(error)));
+      if (current === null) return { conflict: "missing" };
+      if (fingerprintOf(current) !== expected) return { conflict: "changed" };
+    }
     const result = await writeFileSafely({ folder, name, extension, bytes, replace: replace === true, allowed });
     if (result.folder) await rememberFolder(result.folder);
     if (result.path) await recent.add(result.path);
-    return result;
+    return result.path ? { ...result, fingerprint: fingerprintOf(Buffer.from(bytes)) } : result;
   }));
 
   // The page shows that a file is being read and opened (EdukorsDesktop.files.onLoading) from the moment it is chosen;
@@ -228,6 +252,87 @@ export function startDesktopApp(options) {
   handle("edukors:files:forget-recent", (event, { path }) => answer(async () => { if (typeof path === "string") await recent.remove(path); else await recent.clear(); return {}; }));
 
   handle("edukors:files:reveal", (event, { path }) => answer(async () => { shell.showItemInFolder(await revealablePath(path)); return {}; }));
+
+  // ---------- Drafts ----------
+  // A document with unsaved changes is written here (by the page, a moment after it changes), so a crash loses little.
+  // Each window owns the drafts it wrote: a window that closes normally (after the page asked about unsaved changes)
+  // takes them along; after a crash they stay, and the next start offers to recover them. Older than 30 days, dropped.
+  const DRAFTS_DIR = join(APP_DIR, "drafts");
+  const draftsOf = new Map(); // webContents id → keys
+  const draftFile = (key) => {
+    if (typeof key !== "string" || !/^[\w-]{1,80}$/.test(key)) throw new FileError("DRAFT", "Invalid draft.");
+    return join(DRAFTS_DIR, `${key}.draft`);
+  };
+  const removeDraft = async (key) => { const file = draftFile(key); await rm(file, { force: true }); await rm(`${file}.json`, { force: true }); };
+  handle("edukors:files:draft-write", (event, { key, bytes, name, path }) => answer(async () => {
+    const file = draftFile(key);
+    if (!(bytes instanceof Uint8Array) || bytes.length > 512 * 2 ** 20) throw new FileError("DATA", "There is nothing to keep.");
+    await mkdir(DRAFTS_DIR, { recursive: true });
+    await writeFile(`${file}.json`, JSON.stringify({ name: text(name, 200) || "", path: text(path, 4096) || "" }));
+    await writeFile(`${file}.tmp`, bytes);
+    await rename(`${file}.tmp`, file);
+    const id = event.sender.id;
+    if (!draftsOf.has(id)) {
+      draftsOf.set(id, new Set());
+      event.sender.once("destroyed", () => {
+        for (const owned of draftsOf.get(id) || []) for (const f of [draftFile(owned), `${draftFile(owned)}.json`]) rmSync(f, { force: true });
+        draftsOf.delete(id);
+      });
+    }
+    draftsOf.get(id).add(key);
+    return {};
+  }));
+  // A page that crashed no longer owns its drafts: the reloaded page (or the next start) offers them.
+  app.on("render-process-gone", (_event, contents) => draftsOf.delete(contents.id));
+  handle("edukors:files:draft-delete", (event, { key }) => answer(async () => { await removeDraft(key); draftsOf.get(event.sender.id)?.delete(key); return {}; }));
+  // Drafts no open window owns: left by a crash or an earlier run.
+  handle("edukors:files:draft-list", () => answer(async () => {
+    const owned = new Set([...draftsOf.values()].flatMap((keys) => [...keys])), drafts = [];
+    for (const entry of await readdir(DRAFTS_DIR).catch(() => [])) {
+      if (!entry.endsWith(".draft")) continue;
+      const key = entry.slice(0, -6);
+      if (owned.has(key) || !/^[\w-]{1,80}$/.test(key)) continue;
+      const info = await stat(join(DRAFTS_DIR, entry)).catch(() => null);
+      if (!info) continue;
+      if (Date.now() - info.mtimeMs > 30 * 86400000) { await removeDraft(key); continue; }
+      const meta = await readFile(join(DRAFTS_DIR, `${entry}.json`), "utf8").then(JSON.parse).catch(() => ({}));
+      drafts.push({ key, name: text(meta.name, 200) || "", path: text(meta.path, 4096) || "", updated: info.mtime.toISOString() });
+    }
+    return { drafts: drafts.sort((a, b) => b.updated.localeCompare(a.updated)) };
+  }));
+  handle("edukors:files:draft-read", (event, { key }) => answer(async () => ({ bytes: new Uint8Array(await readFile(draftFile(key))) })));
+
+  // ---------- Files to insert (pictures, fonts) ----------
+  // The system's dialog, starting in the last folder something was inserted from, else the document's folder. Only
+  // these kinds, at most 50 MB each; the page never learns the folder.
+  const PICKABLE = {
+    image: { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif" },
+    font: { ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf" },
+  };
+  const MAX_PICK_BYTES = 50 * 2 ** 20;
+  const INSERT_FOLDER_FILE = join(APP_DIR, "insert-folder.json");
+  handle("edukors:files:pick", (event, { title, kinds, multiple, folder }) => answer(async () => {
+    const types = Object.assign({}, ...(Array.isArray(kinds) ? kinds : ["image"]).filter((kind) => PICKABLE[kind]).map((kind) => PICKABLE[kind]));
+    if (!Object.keys(types).length) throw new FileError("FORMAT", "There is nothing to choose.");
+    const isFolder = async (path) => typeof path === "string" && (await stat(path).catch(() => null))?.isDirectory();
+    const last = await readFile(INSERT_FOLDER_FILE, "utf8").then((data) => JSON.parse(data).folder).catch(() => null);
+    const start = (await isFolder(last)) ? last : (await isFolder(folder)) ? folder : await startFolder();
+    const result = await dialog.showOpenDialog(windowOf(event), {
+      title: text(title), defaultPath: start, properties: ["openFile", ...(multiple ? ["multiSelections"] : [])],
+      filters: [{ name: text(title, 80) || "Files", extensions: Object.keys(types).map((e) => e.slice(1)) }],
+    });
+    if (result.canceled || !result.filePaths.length) return { canceled: true };
+    await mkdir(APP_DIR, { recursive: true });
+    await writeFile(INSERT_FOLDER_FILE, JSON.stringify({ folder: dirname(result.filePaths[0]) })).catch(() => {});
+    const files = [];
+    for (const path of result.filePaths.slice(0, 50)) {
+      const extension = extname(path).toLowerCase();
+      if (!types[extension]) throw new FileError("EXTENSION", `Files with the extension "${extension}" cannot be inserted.`);
+      const file = await readDocumentFile(path, { allowed: Object.keys(types), maxBytes: MAX_PICK_BYTES });
+      files.push({ name: file.name, file: file.file, extension, mime: types[extension], bytes: file.bytes });
+    }
+    return { files };
+  }));
 
   // ---------- Files the system opens ----------
   // Double-clicking a document, Open With, or dropping it on the app's icon: macOS sends "open-file" (also before the
@@ -417,7 +522,7 @@ export function startDesktopApp(options) {
   // Updates (desktop/updates.mjs): the latest release of the repository the app names in package.json ("edukors":
   // { "updates": "owner/repo" }), told to every window. Common names none, so its own demo never checks.
   function checkForUpdates() {
-    if (!app.isPackaged || process.windowsStore || process.env.EDUKORS_NO_UPDATES) return;
+    if (!app.isPackaged || process.windowsStore || process.env.EDUKORS_NO_UPDATES || HIDDEN) return;
     const where = updatesOf(JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")));
     if (!where) return;
     startUpdateChecks({

@@ -27,6 +27,15 @@ const files = {
   openRecent: (request) => ipcRenderer.invoke("edukors:files:open-recent", request),
   forgetRecent: (request) => ipcRenderer.invoke("edukors:files:forget-recent", request ?? {}),
   export: (request) => ipcRenderer.invoke("edukors:files:export", request),
+  // Pictures or fonts to insert: { title, kinds: ["image", "font"], multiple, folder } → { files: [{ name, file, extension, mime, bytes }] } | { canceled }.
+  pick: (request) => ipcRenderer.invoke("edukors:files:pick", request),
+  // Drafts of documents with unsaved changes (see "Drafts" in desktop/host.mjs).
+  drafts: {
+    write: (request) => ipcRenderer.invoke("edukors:files:draft-write", request),
+    remove: (key) => ipcRenderer.invoke("edukors:files:draft-delete", { key }),
+    list: () => ipcRenderer.invoke("edukors:files:draft-list"),
+    read: (key) => ipcRenderer.invoke("edukors:files:draft-read", { key }),
+  },
   reveal: (request) => ipcRenderer.invoke("edukors:files:reveal", request),
   // Tells the window whether unsaved changes exist, so closing it can ask first. `labels`: { message, discard, cancel }.
   setDirty: (dirty, labels) => ipcRenderer.send("edukors:files:dirty", { dirty: dirty === true, labels }),
