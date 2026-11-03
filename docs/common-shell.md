@@ -152,4 +152,11 @@ Decided 2026-11-02, with the Text Editor as the first app built on Common. An ap
 
    `desktop/host.mjs` runs everything the apps share: AI, files, Recent, import and export (only the extensions the app lists), the macOS menu, the title bar, terms, and update checks (the app's `package.json`: `"edukors": { "updates": "owner/repo" }`). Unpackaged runs accept `--shared`, `--data-dir <dir>`, and `--verbose`; `EDUKORS_ACCEPT_TERMS=1` skips the terms in automated tests of an unpackaged app.
 
+### Shared behaviour apps rely on
+
+- **Opening indicator** (`EdukorsLoading`, `src/shell/files.js`): from the moment a file is chosen (Open, Recent, Import, or a document the system opens) until the document is open or the attempt failed, an animated "Opening “name”…" card shows in the middle of the window (after 150 ms, so small files do not flash). The host announces the file (`edukors:files:loading`, `EdukorsDesktop.files.onLoading`); the page ends it. An app with a long load of its own calls `const end = EdukorsLoading.begin(name)` and `end()` when done; several may overlap.
+- **Side panel widths**: both side panels have a handle on their inner edge (drag; arrows, Shift for 40 px, Home, End; double click restores the default). The sidebar goes from 200 to 520 px, the assistant from 300 to 900 px, and the workspace keeps at least 360 px. Widths are remembered per panel (`localStorage`, `edukors.common.panel-width.<panel>`).
+- **Export and existing files**: when the exported file already exists, the Export screen says so and offers Replace or Cancel (the name is the document's, so there is no other name to choose); `commit` is called again with `replace: true`. The desktop host checks before rendering. An app with its own export `commit` returns `{ exists: true }` when the file exists and `replace` is not set.
+- **Menus and pickers close on a press outside them** (context menu, shapes, format bar, assistant menus) through a `pointerdown` listener on the page. A press inside an `<iframe>` never reaches the page, so an app whose canvas is an iframe relays it: it dispatches a `pointerdown` (bubbling) on the iframe element when the frame reports a press. Slides does this.
+
 The Common demo is built the same way (`demo/index.html`, `demo/app-config.js`, `demo/document-file.js` with its `EdukorsAppDocument`, `desktop/main.mjs`).

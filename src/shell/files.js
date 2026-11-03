@@ -6,6 +6,42 @@
 // memory: no file is written, no folder is opened.
 // To see the other states in the simulation, save the document with the name "existing" (Save asks to replace) or
 // "error" (Save fails; a document saved as "error" also fails to export, to show that screen).
+// EdukorsLoading.begin(name) shows an animated "Opening …" indicator and returns the function that ends it. Several may
+// run at once; the indicator stays while any is active and names the latest. It appears only after a short moment, so
+// a small file opens without a flash. Apps call it for their own long loads (for example a conversion of their own).
+globalThis.EdukorsLoading = (() => {
+  const active = [];
+  let node = null, timer = null;
+  const label = () => {
+    const messages = (EdukorsLanguages[document.documentElement.lang] || EdukorsLanguages.en).messages;
+    const t = key => messages[key] || EdukorsLanguages.en.messages[key];
+    const name = active.at(-1)?.name;
+    return name ? t('openingFile').replace('{name}', name) : t('opening');
+  };
+  function render() {
+    if (!active.length) { clearTimeout(timer); timer = null; if (node) node.hidden = true; return; }
+    if (!node) {
+      node = document.createElement('div');
+      node.className = 'loading-indicator';
+      node.setAttribute('role', 'status');
+      node.hidden = true;
+      node.innerHTML = '<span class="loading-spinner" aria-hidden="true"></span><span class="loading-text"></span>';
+      document.body.append(node);
+    }
+    node.querySelector('.loading-text').textContent = label();
+    if (node.hidden && !timer) timer = setTimeout(() => { timer = null; if (active.length) node.hidden = false; }, 150);
+  }
+  function begin(name) {
+    const entry = { name: typeof name === 'string' ? name : '' };
+    active.push(entry);
+    render();
+    let ended = false;
+    return () => { if (ended) return; ended = true; active.splice(active.indexOf(entry), 1); render(); };
+  }
+  document.addEventListener('edukors:preferences-changed', () => { if (node && active.length) node.querySelector('.loading-text').textContent = label(); });
+  return Object.freeze({ begin, isActive: () => active.length > 0 });
+})();
+
 (() => {
   const Dialogs = EdukorsFileDialogs;
   const config = () => EdukorsAppConfig.file || {};
@@ -26,6 +62,9 @@
   let defaultFolder = null;      // the system's documents folder, from the desktop host
   let homeFolder = null;         // shown as ~ in Recent
   const fileMessage = (key, values) => Dialogs.fill(t(key), values);
+  // The desktop host says when a chosen file starts being read; the operation that asked ends the indicator.
+  let hostLoading = null;
+  const endLoading = () => { hostLoading?.(); hostLoading = null; };
 
   // ----- Desktop host: real files -----
   const desktopHost = {
@@ -42,12 +81,13 @@
       EdukorsDocuments.refresh();
       return {};
     },
-    async export(doc, { name, folder, format, progress }) {
+    async export(doc, { name, folder, format, replace, progress }) {
       progress(10);
       // exportFile({ doc, format, title }) → { html, width, height } or { data }; apps with only a page give exportPage.
       const out = app().exportFile ? await app().exportFile({ doc, format, title: name }) : await app().exportPage({ title: name });
       progress(40);
-      const result = await desktop.export({ folder, name, format, html: out.html, data: out.data, width: out.width, height: out.height });
+      const result = await desktop.export({ folder, name, format, replace: replace === true, html: out.html, data: out.data, width: out.width, height: out.height });
+      if (result.exists) return { exists: true };
       if (result.error) return { error: result.error };
       progress(100);
       doc.lastExport = result.path;
@@ -70,9 +110,11 @@
       EdukorsDocuments.refresh();
       return {};
     },
-    async export(doc, { name, folder, format, progress }) {
-      // Exporting again overwrites the previous export of the same document, so it never asks about replacing.
+    async export(doc, { name, folder, format, replace, progress }) {
+      // An existing file is replaced only after the screen asked. The preview has no files: a document saved as
+      // `existing` shows the question.
       const ext = `.${format}`, base = withoutExtension(name, ext);
+      if (base.toLowerCase() === 'existing' && !replace) { await wait(200); return { exists: true }; }
       for (let step = 1; step <= 10; step++) { await wait(90); progress(step * 10); }
       if (base.toLowerCase() === 'error') return { error: t('demoExportError') };
       doc.lastExport = `${folder}/${base}${ext}`;
@@ -155,10 +197,12 @@
     if (document.querySelector('dialog[open]')) return;
     // The filter names the app without "Edukors" (Text Editor documents, Common documents).
     const appName = String(EdukorsAppConfig.name || '').replace(/^Edukors\s+/i, '');
-    const result = await desktop.open({ title: t('openTitle'), filterName: Dialogs.fill(t('openFilter'), { app: appName }), allLabel: t('importAll') });
-    if (result.canceled) return;
-    if (result.error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: '', reason: result.error }) }); return; }
-    await adoptFile(result.file);
+    try {
+      const result = await desktop.open({ title: t('openTitle'), filterName: Dialogs.fill(t('openFilter'), { app: appName }), allLabel: t('importAll') });
+      if (result.canceled) return;
+      if (result.error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: '', reason: result.error }) }); return; }
+      await adoptFile(result.file);
+    } finally { endLoading(); }
   }
 
   // A file read by the host becomes a document tab (or activates the tab that already shows it).
@@ -220,6 +264,10 @@
     if (document.querySelector('dialog[open]')) return;
     const formats = importFormats();
     if (!formats.length) return;
+    try { await importChosen(formats); } finally { endLoading(); }
+  }
+
+  async function importChosen(formats) {
     let file;
     if (desktop) {
       const result = await desktop.import({ title: t('importTitle'), allLabel: t('importAll'), formats: formats.map(format => ({ name: t(`import${capitalized(format.id)}`), extensions: format.extensions })) });
@@ -229,6 +277,7 @@
     } else {
       file = await pickInBrowser(formats);
       if (!file) return;
+      hostLoading = EdukorsLoading.begin(file.file);
     }
     const format = formats.find(item => item.extensions.includes(file.extension));
     try {
@@ -254,10 +303,12 @@
     const open = EdukorsDocuments.list().find(doc => pathOf(doc) === entry.path && doc.saved);
     if (open) { EdukorsDocuments.activate(open.id); return; }
     if (!desktop) { Dialogs.toast({ t, message: Dialogs.fill(t('recentPreview'), { path: entry.path }) }); return; }
-    const result = await desktop.openRecent({ path: entry.path });
-    if (result.code === 'MISSING') { Dialogs.toast({ t, message: Dialogs.fill(t('recentGone'), { name: entry.file }) }); return; }
-    if (result.error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: entry.file, reason: result.error }) }); return; }
-    await adoptFile(result.file);
+    try {
+      const result = await desktop.openRecent({ path: entry.path });
+      if (result.code === 'MISSING') { Dialogs.toast({ t, message: Dialogs.fill(t('recentGone'), { name: entry.file }) }); return; }
+      if (result.error) { Dialogs.toast({ t, message: fileMessage('openFailed', { name: entry.file, reason: result.error }) }); return; }
+      await adoptFile(result.file);
+    } finally { endLoading(); }
   }
 
   async function showRecent() {
@@ -318,9 +369,12 @@
     desktop.info().then(info => { defaultFolder = info.documents; homeFolder = info.home; });
     // Documents the system opens (double-click, Open With, the app's icon). Only once the page has loaded: the app's
     // scripts, which turn bytes into a document, load after this one.
-    const listen = () => desktop.onOpened(result => {
-      if (result.error) Dialogs.toast({ t, message: fileMessage('openFailed', { name: result.name || '', reason: result.error }) });
-      else adoptFile(result.file);
+    desktop.onLoading?.(({ name } = {}) => { endLoading(); hostLoading = EdukorsLoading.begin(name); });
+    const listen = () => desktop.onOpened(async result => {
+      try {
+        if (result.error) Dialogs.toast({ t, message: fileMessage('openFailed', { name: result.name || '', reason: result.error }) });
+        else await adoptFile(result.file);
+      } finally { endLoading(); }
     });
     if (document.readyState === 'complete') listen(); else addEventListener('load', listen, { once: true });
   }

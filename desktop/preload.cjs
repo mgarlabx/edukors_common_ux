@@ -9,6 +9,9 @@ ipcRenderer.on("edukors:ai:message", (_event, message) => listener?.(message));
 // Files the system opens (double-click, Open With): the host sends each one as { file, name } or { error, code, name }.
 let openedListener = null;
 ipcRenderer.on("edukors:files:opened", (_event, result) => openedListener?.(result));
+// A file was chosen and is being read (Open, Recent, Import, or the system): { name }.
+let loadingListener = null;
+ipcRenderer.on("edukors:files:loading", (_event, detail) => loadingListener?.(detail));
 
 // Files: the page asks, the main process checks and does the work (see desktop/files-core.mjs). Every call answers
 // with a plain object; problems come back as { error: "message" }, never as an exception with internal details.
@@ -27,6 +30,7 @@ const files = {
   reveal: (request) => ipcRenderer.invoke("edukors:files:reveal", request),
   // Tells the window whether unsaved changes exist, so closing it can ask first. `labels`: { message, discard, cancel }.
   setDirty: (dirty, labels) => ipcRenderer.send("edukors:files:dirty", { dirty: dirty === true, labels }),
+  onLoading: (fn) => { loadingListener = typeof fn === "function" ? fn : null; },
   // Registering the listener tells the host the page can take files the system opens; those waiting arrive then.
   onOpened: (fn) => {
     openedListener = typeof fn === "function" ? fn : null;

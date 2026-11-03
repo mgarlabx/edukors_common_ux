@@ -25,7 +25,7 @@ import { defaultDataDir } from "../src/ai/runtime/platform/paths.js";
 import { createHostDispatcher } from "../src/ai/runtime/host/dispatcher.js";
 import { createAppMethods } from "../src/ai/host/app-methods.js";
 import { startUpdateChecks, updatesOf } from "./updates.mjs";
-import { FileError, createRecentList, readDocumentFile, revealablePath, writeFileSafely } from "./files-core.mjs";
+import { FileError, createRecentList, fileExists, readDocumentFile, revealablePath, writeFileSafely } from "./files-core.mjs";
 
 
 // Common's own folder (the preload script lives here, also when Common sits in an app's node_modules).
@@ -171,6 +171,10 @@ export function startDesktopApp(options) {
     return result;
   }));
 
+  // The page shows that a file is being read and opened (EdukorsDesktop.files.onLoading) from the moment it is chosen;
+  // the page itself ends the indicator once the document is open or has failed.
+  const loading = (contents, path) => { if (!contents.isDestroyed()) contents.send("edukors:files:loading", { name: basename(path) }); };
+
   // Open always goes through the system's dialog; the page cannot name a path here (Recent has its own request).
   handle("edukors:files:open", (event, { title, filterName, allLabel }) => answer(async () => {
     const result = await dialog.showOpenDialog(windowOf(event), {
@@ -181,6 +185,7 @@ export function startDesktopApp(options) {
       ],
     });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
+    loading(event.sender, result.filePaths[0]);
     const file = await readOpenable(result.filePaths[0]);
     await rememberFolder(file.folder);
     await recent.add(file.path);
@@ -200,6 +205,7 @@ export function startDesktopApp(options) {
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
     const chosen = result.filePaths[0], extension = extname(chosen).toLowerCase();
     if (!filters.some((f) => f.extensions.includes(extension.slice(1)))) throw new FileError("EXTENSION", `Files with the extension "${extension}" cannot be imported.`);
+    loading(event.sender, chosen);
     const file = await readDocumentFile(chosen, { allowed: IMPORT_EXTENSIONS, maxBytes: MAX_IMPORT_BYTES });
     await rememberFolder(file.folder);
     return { file: { name: file.name, file: file.file, extension, bytes: file.bytes } };
@@ -210,6 +216,7 @@ export function startDesktopApp(options) {
   handle("edukors:files:open-recent", (event, { path }) => answer(async () => {
     if (!(await recent.has(path))) throw new FileError("RECENT", "This document is not in the list of recent documents.");
     try {
+      loading(event.sender, path);
       const file = await readOpenable(path);
       await recent.add(file.path);
       return { file };
@@ -242,6 +249,7 @@ export function startDesktopApp(options) {
     if (!window) return;
     while (pendingOpen.length) {
       const path = pendingOpen.shift();
+      loading(window.webContents, path);
       const result = await answer(async () => {
         const file = await readOpenable(path);
         await rememberFolder(file.folder);
@@ -300,9 +308,10 @@ export function startDesktopApp(options) {
   }
 
   // { html, width, height } for HTML, PDF, and PNG; { data } (text or bytes) for the formats the page makes itself.
-  handle("edukors:files:export", (event, { folder, name, format, html, data: given, width, height }) => answer(async () => {
+  handle("edukors:files:export", (event, { folder, name, format, replace, html, data: given, width, height }) => answer(async () => {
     const extension = EXPORT_EXTENSIONS[format];
     if (!extension) throw new FileError("FORMAT", "This format is not available.");
+    if (replace !== true && await fileExists({ folder, name, extension, allowed: Object.values(EXPORT_EXTENSIONS) })) return { exists: true };
     let data;
     if (format === "html" || RENDERED.has(format)) {
       if (typeof html !== "string" || html.length > 200 * 2 ** 20) throw new FileError("DATA", "There is nothing to export.");
@@ -313,8 +322,9 @@ export function startDesktopApp(options) {
       if (!(typeof given === "string" || given instanceof Uint8Array)) throw new FileError("DATA", "There is nothing to export.");
       data = given;
     }
-    // Exporting again overwrites the previous export, so replace is always on.
-    const result = await writeFileSafely({ folder, name, extension, bytes: data, replace: true, allowed: Object.values(EXPORT_EXTENSIONS) });
+    // An existing file is replaced only when the page says so (the export screen asked first).
+    const result = await writeFileSafely({ folder, name, extension, bytes: data, replace: replace === true, allowed: Object.values(EXPORT_EXTENSIONS) });
+    if (result.exists) return { exists: true };
     return { path: result.path };
   }));
 

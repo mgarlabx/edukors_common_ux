@@ -50,6 +50,12 @@ const toBuffer = (bytes) => {
  * moved over the target, so an interrupted write never leaves a half-written document. Without `replace`, an existing
  * file is left alone and { exists: true } comes back. Success: { path }.
  */
+// Whether the file a write would create is already there (so the page can ask before slow work such as rendering).
+export async function fileExists({ folder, name, extension, allowed }) {
+  const target = targetOf(await folderOf(folder), name, extension, allowed);
+  return !!(await stat(target).catch(() => null));
+}
+
 export async function writeFileSafely({ folder, name, extension, bytes, replace = false, allowed }) {
   const dir = await folderOf(folder);
   const target = targetOf(dir, name, extension, allowed);

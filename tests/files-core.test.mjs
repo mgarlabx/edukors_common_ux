@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileError, createRecentList, fileNameProblem, readDocumentFile, revealablePath, writeFileSafely } from "../desktop/files-core.mjs";
+import { FileError, createRecentList, fileExists, fileNameProblem, readDocumentFile, revealablePath, writeFileSafely } from "../desktop/files-core.mjs";
 
 const allowed = [".ecmx"];
 const dir = async () => mkdtemp(join(tmpdir(), "edukors-files-"));
@@ -16,8 +16,10 @@ test("file names: plain names pass, unsafe ones do not", () => {
 test("writeFileSafely writes, refuses to overwrite without replace, and leaves no temporary file", async () => {
   const folder = await dir();
   try {
+    assert.equal(await fileExists({ folder, name: "doc", extension: ".ecmx", allowed }), false);
     const first = await writeFileSafely({ folder, name: "doc", extension: ".ecmx", bytes: new Uint8Array([1, 2, 3]), allowed });
     assert.equal(first.path, join(folder, "doc.ecmx"));
+    assert.equal(await fileExists({ folder, name: "doc", extension: ".ecmx", allowed }), true);
     assert.deepEqual([...await readFile(first.path)], [1, 2, 3]);
     assert.deepEqual(await writeFileSafely({ folder, name: "doc", extension: ".ecmx", bytes: new Uint8Array([9]), allowed }), { exists: true });
     assert.deepEqual([...await readFile(first.path)], [1, 2, 3]);
