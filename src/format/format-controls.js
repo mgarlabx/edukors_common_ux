@@ -266,6 +266,9 @@ globalThis.EdukorsFormat = (() => {
 
   // Value picker: a trigger that opens a small panel with a vertical slider (top = largest) and the value.
   // `onInput` reports while dragging; `onCommit` runs on release or after a key step, and the panel closes.
+  // Hovering over the slider previews, in the readout, the value a click there would set (nothing changes yet); a click
+  // or drag uses the same position-to-value rule, so the click lands exactly on the previewed number.
+  const SLIDER_THUMB = 16; // px: the native range thumb's length along the track (Chromium)
   function sliderPopover({ label, min, max, step = 1, value, unit = '', onInput, onCommit, trigger }) {
     const wrapper = el('div', { class: 'pick' }, [trigger]);
     let panel = null;
@@ -279,10 +282,50 @@ globalThis.EdukorsFormat = (() => {
     function outside(event) { if (!wrapper.contains(event.target)) close(); }
     function open() {
       const shown = number => `${number}${unit}`;
+      const decimals = (String(step).split('.')[1] || '').length;
       const readout = el('output', { class: 'slider-value', text: shown(value) });
+      // A fixed width, the longest value the slider can show (29.5px, 100%), so the panel never resizes and the slider
+      // never shifts under the pointer while the readout changes.
+      const longest = String(Math.trunc(Math.max(Math.abs(min), Math.abs(max)))).length + (min < 0 ? 1 : 0) + (decimals ? decimals + 1 : 0) + unit.length;
+      readout.style.width = `${longest + 0.5}ch`;
       const input = el('input', { type: 'range', class: 'vertical-range', min, max, step, value, 'aria-label': label, 'aria-orientation': 'vertical' });
-      input.addEventListener('input', () => { readout.textContent = shown(Number(input.value)); input.setAttribute('aria-valuetext', shown(Number(input.value))); onInput?.(Number(input.value)); });
+      input.addEventListener('input', () => { showCurrent(); input.setAttribute('aria-valuetext', shown(Number(input.value))); onInput?.(Number(input.value)); });
       input.addEventListener('change', () => { const next = Number(input.value); close(); onCommit(next); });
+      // Pointer: the slider's own drag is replaced so hover preview, click, and drag share one mapping.
+      const valueAt = event => {
+        const box = input.getBoundingClientRect();
+        const inset = Math.min(SLIDER_THUMB / 2, box.height / 2);
+        const ratio = Math.min(1, Math.max(0, (box.bottom - inset - event.clientY) / Math.max(1, box.height - 2 * inset)));
+        const stepped = min + Math.round(ratio * (max - min) / step) * step;
+        return Number(Math.min(max, Math.max(min, stepped)).toFixed(decimals));
+      };
+      function showCurrent() { readout.textContent = shown(Number(input.value)); readout.classList.remove('previewing'); }
+      function setTo(next) { if (Number(input.value) === next) return; input.value = String(next); input.dispatchEvent(new Event('input', { bubbles: true })); }
+      let drag = null; // { pointerId, start } while the button is down
+      input.addEventListener('pointermove', event => {
+        if (drag) { setTo(valueAt(event)); return; }
+        readout.textContent = shown(valueAt(event));
+        readout.classList.toggle('previewing', valueAt(event) !== Number(input.value));
+      });
+      input.addEventListener('pointerleave', () => { if (!drag) showCurrent(); });
+      input.addEventListener('mousedown', event => event.preventDefault());
+      input.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        input.focus({ preventScroll: true });
+        input.setPointerCapture(event.pointerId);
+        drag = { pointerId: event.pointerId, start: Number(input.value) };
+        setTo(valueAt(event));
+        showCurrent();
+      });
+      const release = event => {
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        const changed = Number(input.value) !== drag.start;
+        drag = null;
+        if (changed) input.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      input.addEventListener('pointerup', release);
+      input.addEventListener('pointercancel', release);
       panel = el('div', { class: 'slider-pop', role: 'dialog', 'aria-label': label }, [readout, input]);
       panel.addEventListener('keydown', event => { if (event.key === 'Escape' || event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); close(true); } });
       wrapper.append(panel);

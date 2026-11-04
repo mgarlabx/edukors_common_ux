@@ -492,8 +492,9 @@ body.is-resizing-panel, body.is-resizing-panel * { cursor: col-resize !important
 /* Value picker (sizes, opacity): a panel with a vertical slider, largest value at the top. */
 .slider-pop { position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 14px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 28px #17213b24; }
 .combo .slider-pop { left: auto; right: -1px; transform: none; }
-.slider-value { min-width: 4.5ch; color: var(--text, #263149); font-size: calc(13px * var(--font-scale)); font-variant-numeric: tabular-nums; text-align: center; }
-.vertical-range { writing-mode: vertical-lr; direction: rtl; width: calc(22px * var(--font-scale)); height: calc(140px * var(--font-scale)); margin: 0; accent-color: var(--accent); cursor: pointer; }
+.slider-value { min-width: 4.5ch; white-space: nowrap; color: var(--text, #263149); font-size: calc(13px * var(--font-scale)); font-variant-numeric: tabular-nums; text-align: center; }
+.slider-value.previewing { opacity: .6; }
+.vertical-range { touch-action: none; writing-mode: vertical-lr; direction: rtl; width: calc(22px * var(--font-scale)); height: calc(140px * var(--font-scale)); margin: 0; accent-color: var(--accent); cursor: pointer; }
 .step-pair { display: flex; gap: 0; }
 
 /* The document sheet is content, not interface: it stays white in the dark theme, so text and objects keep their colors. */

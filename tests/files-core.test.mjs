@@ -75,7 +75,7 @@ test("revealablePath accepts only existing absolute files", async () => {
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
-test("recent list: newest first, no duplicates, limited, persisted, and missing files marked", async () => {
+test("recent list: newest first, no duplicates, limited, persisted, and missing files dropped", async () => {
   const folder = await dir();
   try {
     const store = join(folder, "data", "recent.json");
@@ -88,16 +88,19 @@ test("recent list: newest first, no duplicates, limited, persisted, and missing 
     await recent.add("relative.ecmx");
     await recent.add(join(folder, "e.txt"));
     let list = await recent.list();
-    assert.deepEqual(list.map((e) => e.file), ["b.ecmx", "d.ecmx", "c.ecmx"]);
-    assert.deepEqual(list.map((e) => e.exists), [true, false, true]);
+    // d.ecmx was never written: it is dropped from the list (and from the stored file) instead of being shown.
+    assert.deepEqual(list.map((e) => e.file), ["b.ecmx", "c.ecmx"]);
     assert.deepEqual([list[0].name, list[0].folder], ["b", folder]);
     assert.equal(await recent.has(paths[0]), false);
+    assert.equal(await recent.has(paths[3]), false);
     assert.equal(await recent.has(paths[2]), true);
 
     const again = createRecentList({ file: store, allowed, max: 3 });
-    assert.deepEqual((await again.list()).map((e) => e.file), ["b.ecmx", "d.ecmx", "c.ecmx"]);
-    await again.remove(paths[3]);
     assert.deepEqual((await again.list()).map((e) => e.file), ["b.ecmx", "c.ecmx"]);
+    await rm(paths[2]);
+    assert.deepEqual((await again.list()).map((e) => e.file), ["b.ecmx"]);
+    await again.remove(paths[1]);
+    assert.deepEqual((await again.list()).map((e) => e.file), []);
     await again.clear();
     assert.deepEqual(await createRecentList({ file: store, allowed }).list(), []);
   } finally { await rm(folder, { recursive: true, force: true }); }
@@ -109,6 +112,7 @@ test("recent list: a damaged or hostile file reads as empty or filtered", async 
     const store = join(folder, "recent.json");
     await writeFile(store, "{not json");
     assert.deepEqual(await createRecentList({ file: store, allowed }).list(), []);
+    await writeFile(join(folder, "ok.ecmx"), "x");
     await writeFile(store, JSON.stringify({ recent: [{ path: "/etc/passwd", time: 1 }, { path: "rel.ecmx", time: 1 }, { path: join(folder, "ok.ecmx"), time: 1 }, { path: join(folder, "ok.ecmx"), time: 2 }, { path: join(folder, "t.ecmx") }] }));
     assert.deepEqual((await createRecentList({ file: store, allowed }).list()).map((e) => e.file), ["ok.ecmx"]);
   } finally { await rm(folder, { recursive: true, force: true }); }

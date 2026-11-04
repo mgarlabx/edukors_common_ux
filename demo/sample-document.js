@@ -210,6 +210,7 @@
       field.spellcheck = false;
       field.setAttribute('aria-label', object.kind === 'text' ? label('text') : message('sampleShapeText'));
       if (object.kind === 'text' && object.state.html === null) field.textContent = label('text'); else field.innerHTML = object.state.html;
+      fitBaseSize(object, field);
       field.addEventListener('input', () => { object.state.html = field.innerHTML; scheduleCommit(); });
       field.addEventListener('keydown', event => { if (event.key === 'Enter') event.preventDefault(); });
       field.addEventListener('paste', event => {
@@ -332,6 +333,63 @@
     else { const range = document.createRange(); range.selectNodeContents(field); s.addRange(range); }
   }
 
+  // Line spacing follows the text. Each line is at least as tall as the field's own font size (the browser's "strut"),
+  // so after the text was made smaller the lines kept the spacing of the old size. The field's own size is therefore
+  // kept at the smallest size of its text: one size everywhere → that size on the field and no size on the runs;
+  // mixed sizes → every run carries its size and the field takes the smallest. Text nodes are moved, never recreated,
+  // so the selection is put back on the same characters.
+  function fitBaseSize(object, field) {
+    const sizeIn = node => {
+      const match = /calc\(([\d.]+)px/.exec(node.style?.fontSize || '');
+      return match ? Math.round(Number(match[1]) / scale * 100) / 100 : null;
+    };
+    const sizedAncestor = text => { for (let node = text.parentElement; node && node !== field; node = node.parentElement) if (sizeIn(node) !== null) return node; return null; };
+    const runs = [];
+    const walker = document.createTreeWalker(field, NodeFilter.SHOW_TEXT);
+    for (let text; (text = walker.nextNode());) if (text.data.length) runs.push({ text, sized: sizedAncestor(text) });
+    if (!runs.length) return;
+    const base = sizeIn(field) ?? object.state.fontSize;
+    const sizes = runs.map(run => run.sized ? sizeIn(run.sized) : base);
+    const smallest = Math.min(...sizes);
+
+    const selection = getSelection();
+    const range = selection.rangeCount && field.contains(selection.getRangeAt(0).commonAncestorContainer) ? selection.getRangeAt(0) : null;
+    const point = (container, offset) => {
+      if (container.nodeType === Node.TEXT_NODE) return [container, offset];
+      const after = container.childNodes[offset];
+      const inside = after ? document.createTreeWalker(after, NodeFilter.SHOW_TEXT).nextNode() || (after.nodeType === Node.TEXT_NODE ? after : null) : null;
+      if (inside) return [inside, 0];
+      const last = runs.filter(run => container.contains(run.text)).at(-1);
+      return last ? [last.text, last.text.data.length] : null;
+    };
+    const saved = range && [point(range.startContainer, range.startOffset), point(range.endContainer, range.endOffset)];
+
+    if (sizes.every(size => size === smallest)) {
+      for (const node of field.querySelectorAll('[style]')) {
+        node.style.removeProperty('font-size');
+        if (!node.getAttribute('style')) node.removeAttribute('style');
+        if (node.localName === 'span' && !node.attributes.length) node.replaceWith(...node.childNodes);
+      }
+    } else {
+      runs.forEach((run, index) => {
+        if (run.sized) return;
+        const span = document.createElement('span');
+        span.style.fontSize = sizeCss(sizes[index]);
+        run.text.replaceWith(span);
+        span.append(run.text);
+      });
+    }
+    field.style.fontSize = sizeCss(smallest);
+    // A text object's field sits in a line box of its own: that box (and the list mark in it) takes the same size.
+    if (object.kind === 'text') field.parentElement.style.fontSize = sizeCss(smallest);
+
+    if (saved?.[0] && saved[1] && field.contains(saved[0][0]) && field.contains(saved[1][0])) {
+      const again = document.createRange();
+      again.setStart(...saved[0]); again.setEnd(...saved[1]);
+      selection.removeAllRanges(); selection.addRange(again);
+    }
+  }
+
   function applyCharacter(object, property, value) {
     const field = fieldOf(object);
     if (!field) return;
@@ -361,6 +419,7 @@
       // execCommand only knows sizes 1–7: apply 7, then replace that marker with the requested size.
       document.execCommand('fontSize', false, '7');
       for (const node of field.querySelectorAll('[style*="xxx-large"], font[size="7"]')) { node.style.fontSize = sizeCss(value); node.removeAttribute('size'); }
+      fitBaseSize(object, field);
     }
     if (property === 'link') {
       document.execCommand('styleWithCSS', false, false);
@@ -635,8 +694,10 @@
     }
     for (const button of document.querySelectorAll('#insert-actions .tool')) {
       button.removeAttribute('aria-description');
-      // Insert types an app does not offer are left out (they are not a temporary state).
+      // Insert types an app does not offer are left out (they are not a temporary state). The shell starts every
+      // Insert button unavailable, so an offered one must also be enabled here.
       button.hidden = !available[button.dataset.command];
+      if (available[button.dataset.command]) button.removeAttribute('aria-disabled'); else button.setAttribute('aria-disabled', 'true');
     }
   }
   for (const button of document.querySelectorAll('#edit-actions .tool, #insert-actions .tool')) {

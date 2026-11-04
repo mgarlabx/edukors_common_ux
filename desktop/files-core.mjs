@@ -125,7 +125,8 @@ export async function revealablePath(path) {
  * The app's list of recent documents, kept by the host (never by the page) in a JSON file of the app's data folder.
  * Entries are added only after a document was really saved or opened, so the page cannot plant paths; opening from the
  * list is allowed only for a path the list holds. Newest first, at most `max` entries; a damaged file reads as empty.
- *   list()        → [{ path, name, folder, file, time, exists }]
+ * A file that is no longer there leaves the list the next time it is read, so it is never shown.
+ *   list()        → [{ path, name, folder, file, time }] (only files that still exist)
  *   add(path)     → after a successful save or open
  *   remove(path), clear(), has(path)
  */
@@ -161,10 +162,17 @@ export function createRecentList({ file, allowed, max = 10 }) {
 
   return {
     async list() {
-      return Promise.all((await load()).map(async ({ path, time }) => ({
-        path, time, name: basename(path, extname(path)), folder: dirname(path), file: basename(path),
-        exists: !!(await stat(path).catch(() => null))?.isFile(),
+      const checked = await Promise.all((await load()).map(async ({ path, time }) => ({
+        path, time, exists: !!(await stat(path).catch(() => null))?.isFile(),
       })));
+      const gone = new Set(checked.filter((entry) => !entry.exists).map((entry) => entry.path));
+      if (gone.size) {
+        entries = entries.filter((entry) => !gone.has(entry.path));
+        await persist();
+      }
+      return checked.filter((entry) => entry.exists).map(({ path, time }) => ({
+        path, time, name: basename(path, extname(path)), folder: dirname(path), file: basename(path),
+      }));
     },
     async has(path) { return (await load()).some((entry) => entry.path === path); },
     async add(path) {

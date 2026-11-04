@@ -324,7 +324,8 @@ globalThis.EdukorsLoading = (() => {
   // ----- Recent -----
   // A menu under the toolbar button: the documents saved or opened most recently, newest first, with their folders.
   // The desktop host keeps the list (it adds a file only after a real save or open, and opens only paths it holds);
-  // a file that is no longer there is marked, and choosing it removes it from the list. The preview lists what was
+  // a file that is no longer there is dropped from the list without being shown (if it disappears while the menu is
+  // open, choosing it removes it and says so). The preview lists what was
   // "saved" while the page is open and can only switch to a document that is still open.
   const shortFolder = folder => homeFolder && (folder === homeFolder || folder.startsWith(`${homeFolder}/`) || folder.startsWith(`${homeFolder}\\`))
     ? `~${folder.slice(homeFolder.length)}` : folder;
@@ -353,7 +354,7 @@ globalThis.EdukorsLoading = (() => {
     // Files of other formats show their extension (lesson.docx), so they are not confused with the app's documents.
     const items = list.map(entry => ({
       label: entry.file.toLowerCase().endsWith(extension().toLowerCase()) ? entry.name : entry.file,
-      detail: entry.exists ? shortFolder(entry.folder) : `${t('recentMissing')} · ${shortFolder(entry.folder)}`,
+      detail: shortFolder(entry.folder),
       title: entry.path,
       action: () => openRecent(entry)
     }));
