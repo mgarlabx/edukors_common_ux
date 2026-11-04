@@ -9,7 +9,9 @@
 // EdukorsLoading.begin(name, kind) shows an animated "Opening …" indicator ("Saving …" or "Exporting …" with kind
 // 'saving' or 'exporting') and returns the function that ends it. Several may run at once; the indicator stays while
 // any is active and names the latest. It appears only after a short moment, so a small file opens or saves without a
-// flash. It sits in the top layer, above an open Save or Export screen. Apps call it for their own long loads (for
+// flash; begin(name, kind, { now: true }) shows it at once (Save and Export: the person just clicked). It sits in the
+// top layer, above an open Save or Export screen. await EdukorsLoading.painted() lets it reach the screen before work
+// that keeps the page busy (turning a large document into bytes) starts. Apps call it for their own long loads (for
 // example a conversion of their own).
 globalThis.EdukorsLoading = (() => {
   const active = [];
@@ -39,15 +41,23 @@ globalThis.EdukorsLoading = (() => {
     node.querySelector('.loading-text').textContent = label();
     if (node.hidden && !timer) timer = setTimeout(() => { timer = null; if (active.length) show(); }, 150);
   }
-  function begin(name, kind = 'opening') {
+  function begin(name, kind = 'opening', { now = false } = {}) {
     const entry = { name: typeof name === 'string' ? name : '', kind };
     active.push(entry);
     render();
+    if (now && (node.hidden || !node.matches?.(':popover-open'))) { clearTimeout(timer); timer = null; show(); }
     let ended = false;
     return () => { if (ended) return; ended = true; active.splice(active.indexOf(entry), 1); render(); };
   }
   document.addEventListener('edukors:preferences-changed', () => { if (node && active.length) node.querySelector('.loading-text').textContent = label(); });
-  return Object.freeze({ begin, isActive: () => active.length > 0 });
+  // After the next frame is painted (or a short wait where frames do not run, as in hidden windows).
+  const painted = () => new Promise(resolve => {
+    let done = false;
+    const go = () => { if (!done) { done = true; resolve(); } };
+    requestAnimationFrame(() => setTimeout(go, 0));
+    setTimeout(go, 100);
+  });
+  return Object.freeze({ begin, painted, isActive: () => active.length > 0 });
 })();
 
 (() => {
@@ -80,8 +90,9 @@ globalThis.EdukorsLoading = (() => {
     async save(doc, { name, folder, replace, check = false }) {
       const base = withoutExtension(name, extension());
       EdukorsDocuments.setSaving(doc, true);
-      const endIndicator = EdukorsLoading.begin(base + extension(), 'saving');
+      const endIndicator = EdukorsLoading.begin(base + extension(), 'saving', { now: true });
       try {
+        await EdukorsLoading.painted();
         // The conversations as written: changes made while the file is written stay unsaved.
         const signature = EdukorsAiAssistant.signature(doc);
         const { bytes, committed } = await app().toBytes(doc, { name: base });
@@ -100,8 +111,8 @@ globalThis.EdukorsLoading = (() => {
       } finally { endIndicator(); EdukorsDocuments.setSaving(doc, false); }
     },
     async export(doc, { name, folder, format, replace, progress }) {
-      const endIndicator = EdukorsLoading.begin(`${name}.${format}`, 'exporting');
-      try { return await this.exportNow(doc, { name, folder, format, replace, progress }); } finally { endIndicator(); }
+      const endIndicator = EdukorsLoading.begin(`${name}.${format}`, 'exporting', { now: true });
+      try { await EdukorsLoading.painted(); return await this.exportNow(doc, { name, folder, format, replace, progress }); } finally { endIndicator(); }
     },
     async exportNow(doc, { name, folder, format, replace, progress }) {
       progress(10);
@@ -122,7 +133,7 @@ globalThis.EdukorsLoading = (() => {
   const simulatedHost = {
     async save(doc, { name, folder, replace }) {
       const base = withoutExtension(name, extension());
-      const endIndicator = EdukorsLoading.begin(base + extension(), 'saving');
+      const endIndicator = EdukorsLoading.begin(base + extension(), 'saving', { now: true });
       try { await wait(450); } finally { endIndicator(); }
       if (base.toLowerCase() === 'existing' && !replace && doc.file !== `${base}${extension()}`) return { exists: true };
       if (base.toLowerCase() === 'error') return { error: t('demoSaveError') };
@@ -138,7 +149,7 @@ globalThis.EdukorsLoading = (() => {
       // `existing` shows the question.
       const ext = `.${format}`, base = withoutExtension(name, ext);
       if (base.toLowerCase() === 'existing' && !replace) { await wait(200); return { exists: true }; }
-      const endIndicator = EdukorsLoading.begin(base + ext, 'exporting');
+      const endIndicator = EdukorsLoading.begin(base + ext, 'exporting', { now: true });
       try { for (let step = 1; step <= 10; step++) { await wait(90); progress(step * 10); } } finally { endIndicator(); }
       if (base.toLowerCase() === 'error') return { error: t('demoExportError') };
       doc.lastExport = `${folder}/${base}${ext}`;
@@ -165,8 +176,9 @@ globalThis.EdukorsLoading = (() => {
       doc.originConfirmed = true;
     }
     EdukorsDocuments.setSaving(doc, true);
-    const endIndicator = EdukorsLoading.begin(doc.file, 'saving');
+    const endIndicator = EdukorsLoading.begin(doc.file, 'saving', { now: true });
     try {
+      await EdukorsLoading.painted();
       const signature = EdukorsAiAssistant.signature(doc);
       const out = await app().exportFile({ doc, format: doc.originFormat, title: doc.name });
       const request = { folder: doc.folder, name: doc.file.slice(0, -doc.originExt.length), extension: doc.originExt, bytes: out.data ?? out.html, replace: true };
