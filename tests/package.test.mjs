@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import '../src/package/package.js';
@@ -163,4 +163,25 @@ test('extensions follow the .e??x rule', () => {
   assert.equal(P.extensionFor('graph'), '.egrx');
   assert.equal(P.extensionFor('text'), '.etex');
   assert.equal(P.extensionFor('common'), '.ecmx');
+});
+
+test('names with spaces: relationship targets and content-type overrides keep them', async () => {
+  const bytes = await P.write({
+    app: { name: 'graph', version: 'v.26.11.04' },
+    main: { name: 'graph/course.json', contentType: P.contentType('graph', 'course'), content: { a: 1 }, relationships: [{ id: 'rIdMedia1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: 'media/Gato 1.png' }] },
+    parts: [{ name: 'graph/media/Gato 1.png', contentType: 'image/png', content: new Uint8Array([1, 2, 3]) }],
+    properties: { title: 'A title with spaces' }
+  });
+  const doc = await P.read(bytes);
+  assert.deepEqual([...doc.bytes('graph/media/Gato 1.png')], [1, 2, 3]);
+  assert.equal(doc.relationships('graph/course.json')[0].target, 'graph/media/Gato 1.png');
+  assert.equal(doc.properties.title, 'A title with spaces');
+});
+
+test('attributes: anything but whitespace between them is refused', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'edukors-attr-'));
+  const file = join(dir, 'junk.zip');
+  const rels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship junk Id="rId1" Type="https://edukors.org/package/relationships/main" Target="a.json"/></Relationships>';
+  execFileSync('python3', ['-c', `import zipfile,sys\nz=zipfile.ZipFile(sys.argv[1],'w')\nz.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="r"/><Default Extension="json" ContentType="j"/></Types>')\nz.writestr('_rels/.rels',sys.argv[2])\nz.writestr('a.json','{}')\nz.close()`, file, rels]);
+  return rejects(P.read(new Uint8Array(readFileSync(file))), 'xml');
 });

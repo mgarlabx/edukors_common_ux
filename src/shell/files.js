@@ -498,7 +498,8 @@ globalThis.EdukorsLoading = (() => {
   // the document's folder. Browser: a file input. → [{ name, file, extension, mime, bytes }] (empty when cancelled).
   const MIMES = {
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif',
-    '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf'
+    '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf',
+    '.mp4': 'video/mp4', '.webm': 'video/webm'
   };
   async function pickFiles({ kinds = ['image'], multiple = false, doc = EdukorsDocuments.active() } = {}) {
     const title = t(kinds.length === 1 && kinds[0] === 'image' ? 'pickImagesTitle' : 'pickFilesTitle');
@@ -507,14 +508,14 @@ globalThis.EdukorsLoading = (() => {
       if (result.error) { Dialogs.toast({ t, message: fileMessage('pickFailed', { reason: result.error }) }); return []; }
       return result.canceled ? [] : result.files;
     }
-    const accept = Object.entries(MIMES).filter(([, mime]) => kinds.some(kind => mime.startsWith(kind === 'image' ? 'image/' : 'font/'))).map(([ext]) => ext);
+    const accept = Object.entries(MIMES).filter(([, mime]) => kinds.some(kind => mime.startsWith(`${kind}/`))).map(([ext]) => ext);
     return new Promise(resolve => {
       const input = Object.assign(document.createElement('input'), { type: 'file', accept: accept.join(','), multiple });
       input.addEventListener('change', async () => {
         const files = [];
         for (const file of input.files) {
           const dot = file.name.lastIndexOf('.'), ext = dot > 0 ? file.name.slice(dot).toLowerCase() : '';
-          if (!accept.includes(ext) || file.size > 50 * 2 ** 20) continue;
+          if (!accept.includes(ext) || file.size > (MIMES[ext].startsWith('video/') ? 500 : 50) * 2 ** 20) continue;
           files.push({ name: dot > 0 ? file.name.slice(0, dot) : file.name, file: file.name, extension: ext, mime: MIMES[ext], bytes: new Uint8Array(await file.arrayBuffer()) });
         }
         resolve(files);

@@ -36,7 +36,8 @@ const COMMON = fileURLToPath(new URL("..", import.meta.url));
  * Starts the app. options: appId (lowercase, used for data folders), name (shown in the window and menu), root (the
  * app's folder: its package.json and page), page ("index.html"), skills (unpackaged sample skills folder, "skills"),
  * documentExtensions ([".etex"]), importExtensions ([] : nothing to import), exportFormats (["html", "pdf", "png"]),
- * maxOpenBytes (largest file of another format that Open, Recent, and Import read: 50 MB; at most 2 GB).
+ * maxOpenBytes (largest file of another format that Open, Recent, and Import read: 50 MB; at most 2 GB),
+ * minimizeShortcut (true: Window → Minimize takes Cmd+M on macOS; false leaves Cmd+M to the page, the item stays).
  *
  * EDUKORS_HIDDEN=1 (automated tests): no window is ever shown or focused, the Dock icon is hidden, hidden windows run
  * at full speed, and there are no update checks.
@@ -44,7 +45,7 @@ const COMMON = fileURLToPath(new URL("..", import.meta.url));
 export function startDesktopApp(options) {
   const {
     appId, name, root, page = "index.html", skills = "skills", documentExtensions,
-    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [], saveExtensions = [], maxOpenBytes = 50 * 2 ** 20,
+    importExtensions = [], exportFormats = ["html", "pdf", "png"], openExtensions = [], saveExtensions = [], maxOpenBytes = 50 * 2 ** 20, minimizeShortcut = true,
   } = options;
   if (!/^[a-z][a-z0-9-]*$/.test(appId ?? "") || !name || !root || !documentExtensions?.length) throw new Error("startDesktopApp needs appId, name, root, and documentExtensions.");
   const ROOT = root;
@@ -308,8 +309,10 @@ export function startDesktopApp(options) {
   const PICKABLE = {
     image: { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif" },
     font: { ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf" },
+    video: { ".mp4": "video/mp4", ".webm": "video/webm" },
   };
-  const MAX_PICK_BYTES = 50 * 2 ** 20;
+  // Pictures and fonts up to 50 MB each; videos up to 500 MB (a document holds at most 512 MB).
+  const MAX_PICK_BYTES = 50 * 2 ** 20, MAX_VIDEO_BYTES = 500 * 2 ** 20;
   const INSERT_FOLDER_FILE = join(APP_DIR, "insert-folder.json");
   handle("edukors:files:pick", (event, { title, kinds, multiple, folder }) => answer(async () => {
     const types = Object.assign({}, ...(Array.isArray(kinds) ? kinds : ["image"]).filter((kind) => PICKABLE[kind]).map((kind) => PICKABLE[kind]));
@@ -328,7 +331,7 @@ export function startDesktopApp(options) {
     for (const path of result.filePaths.slice(0, 50)) {
       const extension = extname(path).toLowerCase();
       if (!types[extension]) throw new FileError("EXTENSION", `Files with the extension "${extension}" cannot be inserted.`);
-      const file = await readDocumentFile(path, { allowed: Object.keys(types), maxBytes: MAX_PICK_BYTES });
+      const file = await readDocumentFile(path, { allowed: Object.keys(types), maxBytes: types[extension].startsWith("video/") ? MAX_VIDEO_BYTES : MAX_PICK_BYTES });
       files.push({ name: file.name, file: file.file, extension, mime: types[extension], bytes: file.bytes });
     }
     return { files };
@@ -484,7 +487,7 @@ export function startDesktopApp(options) {
         { label: l.selectAll, accelerator: "Cmd+A", click: command("selectAll") },
       ] },
       { label: l.window, role: "windowMenu", submenu: [
-        { role: "minimize", label: l.minimize }, { role: "zoom", label: l.zoom },
+        (minimizeShortcut ? { role: "minimize", label: l.minimize } : { label: l.minimize, click: () => BrowserWindow.getFocusedWindow()?.minimize() }), { role: "zoom", label: l.zoom },
         { type: "separator" },
         { label: l.closeTab, accelerator: "Cmd+W", click: command("closeTab") },
         { type: "separator" },

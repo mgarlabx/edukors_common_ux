@@ -115,9 +115,10 @@
       if (!match) fail('xml', 'Malformed tag.');
       const element = { name: match[1], localName: match[1].slice(match[1].indexOf(':') + 1), attrs: {}, children: [], text: '' };
       const attrPattern = /([^\s=]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
-      let attr, consumed = 0;
-      while ((attr = attrPattern.exec(match[2]))) { element.attrs[attr[1]] = unescape(attr[3] ?? attr[4]); consumed += attr[0].length; }
-      if (match[2].replace(/\s/g, '').length !== consumed) fail('xml', 'Malformed attributes.');
+      let attr;
+      while ((attr = attrPattern.exec(match[2]))) element.attrs[attr[1]] = unescape(attr[3] ?? attr[4]);
+      // Anything but whitespace between the attributes is malformed (values may hold spaces: Target="media/a b.png").
+      if (match[2].replace(attrPattern, ' ').trim()) fail('xml', 'Malformed attributes.');
       stack[stack.length - 1].children.push(element);
       if (!selfClosing) stack.push(element);
     }

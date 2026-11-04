@@ -28,7 +28,8 @@ const MAX_FILE = 50 << 20;
 const MIME = { png: "image/png", apng: "image/apng", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", avif: "image/avif", svg: "image/svg+xml", bmp: "image/bmp", ico: "image/x-icon", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", pdf: "application/pdf", json: "application/json", txt: "text/plain", md: "text/markdown", html: "text/html", csv: "text/csv" };
 const mimeOf = (name) => MIME[String(name).split(".").pop().toLowerCase()] || "application/octet-stream";
 
-// mode: "ask" (each change to the document waits for approval) or "auto" (changes apply at once, with Undo).
+// mode: "ask" (each change to the document waits for approval), "auto" (changes apply at once, with Undo), or "plan"
+// (read and propose only; changes and actions in the folder are refused until another mode is chosen).
 // choices: the model and effort chosen for each account ({ [accountId]: { model, effort } }), so the model always
 // belongs to the account's service.
 // web: whether the agent may search the web (on by default; the + menu turns it off).
@@ -211,7 +212,7 @@ function pick(raw) {
       out.choices[accountId] = { model: choice.model.slice(0, 200), effort: typeof choice.effort === "string" ? choice.effort.slice(0, 50) : "" };
     }
   }
-  if (raw.mode === "ask" || raw.mode === "auto") out.mode = raw.mode;
+  if (raw.mode === "ask" || raw.mode === "auto" || raw.mode === "plan") out.mode = raw.mode;
   if (typeof raw.web === "boolean") out.web = raw.web;
   return out;
 }

@@ -299,13 +299,17 @@ globalThis.EdukorsAiAssistant = (() => {
 
   // Mode: review each change before it is applied, or apply changes at once (each one can be undone).
   // Apply uses a play icon: the bolt belongs to skills.
-  const modes = { ask: 'graph-Hand', auto: 'slides-play' };
-  const currentMode = () => (store.state.settings?.mode === 'auto' ? 'auto' : 'ask');
+  // Review before applying, apply at once, or plan: read and propose only; nothing changes until the person picks
+  // another mode (tools that change the document and actions in the folder are refused meanwhile).
+  const modes = { ask: 'graph-Hand', auto: 'slides-play', plan: 'graph-Plan' };
+  const currentMode = () => (['auto', 'plan'].includes(store.state.settings?.mode) ? store.state.settings.mode : 'ask');
+  const modeKey = (mode, suffix = '') => `aiMode${{ ask: 'Ask', auto: 'Auto', plan: 'Plan' }[mode]}${suffix}`;
+  const PLAN_NOTE = 'Plan mode is on: read what you need and reply with a plan, step by step, in the user\'s language. Do not change the document, create or edit files, or run commands; tools that change the document are refused until the user chooses another mode to carry out the plan.';
   modeMenu.fill = close => {
     modeMenu.pop.setAttribute('aria-label', t('aiMode'));
     modeMenu.pop.replaceChildren(...Object.keys(modes).map(mode => menuItem([
       icon(modes[mode], 16),
-      h('span', { class: 'ai-menu-text' }, [h('span', { text: t(mode === 'ask' ? 'aiModeAsk' : 'aiModeAuto') }), h('small', { class: 'ai-menu-hint', text: t(mode === 'ask' ? 'aiModeAskHint' : 'aiModeAutoHint') })])
+      h('span', { class: 'ai-menu-text' }, [h('span', { text: t(modeKey(mode)) }), h('small', { class: 'ai-menu-hint', text: t(modeKey(mode, 'Hint')) })])
     ], mode === currentMode(), async () => { close(); await store.saveSettings({ mode }).catch(() => {}); renderControls(); })));
   };
 
@@ -538,7 +542,7 @@ globalThis.EdukorsAiAssistant = (() => {
     const picks = conv.picks, attachments = conv.attachments;
     const lead = picks.map(pick => (pick.kind === 'mcp' ? `Use the MCP server "${pick.server}" (its tools are named mcp__${pick.server}__<tool>) for this request.`
       : `Use the skill "${pick.name}" for this request.`)).join('\n');
-    const text = [lead, typed].filter(Boolean).join('\n\n');
+    const text = [currentMode() === 'plan' ? PLAN_NOTE : '', lead, typed].filter(Boolean).join('\n\n');
     input.value = '';
     conv.picks = [];
     conv.attachments = [];
@@ -694,6 +698,7 @@ globalThis.EdukorsAiAssistant = (() => {
       const tool = app.tools.find(item => item.name === name);
       if (!doc || !tool) return { content: `The tool ${name} is not available for this document.`, isError: true };
       const conv = bySession.get(sessionId);
+      if (tool.changes !== false && currentMode() === 'plan') return { content: 'Plan mode is on: present the plan; the user chooses another mode to carry it out.', isError: true };
       if (tool.changes !== false && currentMode() === 'ask' && conv) {
         endSteps(conv);
         const approved = await new Promise(resolve => push(conv, { kind: 'approve', tool: name, args, decision: null, resolve }));
@@ -714,6 +719,7 @@ globalThis.EdukorsAiAssistant = (() => {
       // Native actions in the folder (creating or editing a file, running a command): asked in review mode only.
       if (request.kind === 'native') {
         if (currentMode() === 'auto') { resolve({ allow: true }); return; }
+        if (currentMode() === 'plan') { resolve({ allow: false, message: 'Plan mode is on: nothing is changed or run until the user chooses another mode.' }); return; }
         endSteps(conv);
         push(conv, { kind: 'native', request: { ...request, tool }, decision: null, resolve: allow => resolve(allow ? { allow: true } : { allow: false, message: 'The user declined this action.' }) });
         return;
@@ -957,9 +963,9 @@ globalThis.EdukorsAiAssistant = (() => {
     // Mode chip.
     const mode = currentMode();
     modeMenu.chip.disabled = !available || running;
-    modeMenu.chip.setAttribute('aria-label', `${t('aiMode')}: ${t(mode === 'ask' ? 'aiModeAsk' : 'aiModeAuto')}`);
-    modeMenu.chip.title = t(mode === 'ask' ? 'aiModeAskHint' : 'aiModeAutoHint');
-    modeMenu.chip.replaceChildren(icon(modes[mode], 14), h('span', { text: t(mode === 'ask' ? 'aiModeAskShort' : 'aiModeAutoShort') }), icon('graph-ChevronDown', 12));
+    modeMenu.chip.setAttribute('aria-label', `${t('aiMode')}: ${t(modeKey(mode))}`);
+    modeMenu.chip.title = t(modeKey(mode, 'Hint'));
+    modeMenu.chip.replaceChildren(icon(modes[mode], 14), h('span', { text: t(modeKey(mode, 'Short')) }), icon('graph-ChevronDown', 12));
 
     // Model chip: shown when the account's service lists its models.
     const caps = account && store.provider(account.providerId)?.capabilities;
