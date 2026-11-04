@@ -14,7 +14,7 @@
 // `commit({ name, folder, format, replace, progress })` returns a promise of:
 //   {}                   done
 //   { exists: true }     a file with that name is already in the folder: the screen asks whether to replace it
-//                        (Save: Replace or Choose another name; Export, whose name is fixed: Replace or Cancel)
+//                        (Save and Export alike: Cancel or Replace; editing the name or the format asks again)
 //   { error: 'text' }    failed: the screen stays open and shows the text
 // `formats`: [{ id, label, description, extension }]. `progress(0..100)` fills the progress bar while exporting.
 // Choosing a folder belongs to the host: pass `chooseFolder: async () => 'path'` to enable the Choose button.
@@ -107,14 +107,14 @@ globalThis.EdukorsFileDialogs = (() => {
       );
 
       const cancel = button(t('cancel')), go = button(primary, 'primary');
-      const back = button(t('chooseAnotherName')), replace = button(t('replaceFile'), 'primary');
-      back.hidden = replace.hidden = true;
-      footer.append(cancel, back, go, replace);
+      const replace = button(t('replaceFile'), 'primary');
+      replace.hidden = true;
+      footer.append(cancel, go, replace);
 
       let busy = false, finish;
       const setBusy = value => {
         busy = value;
-        for (const control of [cancel, go, back, replace, close, nameInput, ...body.querySelectorAll('input[type=radio]')]) control.disabled = value;
+        for (const control of [cancel, go, replace, close, nameInput, ...body.querySelectorAll('input[type=radio]')]) control.disabled = value;
         progress.hidden = !(value && formats);
         go.textContent = value ? busyLabel : primary;
       };
@@ -132,9 +132,9 @@ globalThis.EdukorsFileDialogs = (() => {
         catch (error) { result = { error: error.message || t(formats ? 'exportFailed' : 'saveFailed') }; }
         setBusy(false);
         if (result?.exists) {
-          // Export keeps the document's name, so there is no other name to choose: Cancel or Replace.
+          // Only Cancel or Replace (the user's choice): a different name is typed in the field, which asks again.
           showMessage(fill(t('fileExists'), { name: currentName() + extensionText() }), 'warning');
-          go.hidden = true; replace.hidden = false; back.hidden = fixedLocation;
+          go.hidden = true; replace.hidden = false;
           replace.focus();
         } else if (result?.error) {
           showMessage(`${t(formats ? 'exportFailed' : 'saveFailed')} ${result.error}`);
@@ -143,10 +143,9 @@ globalThis.EdukorsFileDialogs = (() => {
       }
       go.addEventListener('click', () => run(false));
       replace.addEventListener('click', () => run(true));
-      back.addEventListener('click', () => { showMessage(''); go.hidden = false; back.hidden = replace.hidden = true; nameInput.focus(); nameInput.select(); });
-      nameInput.addEventListener('input', () => { if (message.textContent) { showMessage(''); nameInput.removeAttribute('aria-invalid'); if (!go.hidden) return; go.hidden = false; back.hidden = replace.hidden = true; } });
+      nameInput.addEventListener('input', () => { if (message.textContent) { showMessage(''); nameInput.removeAttribute('aria-invalid'); if (!go.hidden) return; go.hidden = false; replace.hidden = true; } });
       // Export: choosing another format asks again (the file with that extension may not exist).
-      if (fixedLocation) body.addEventListener('change', () => { if (go.hidden && !busy) { showMessage(''); go.hidden = false; back.hidden = replace.hidden = true; } });
+      if (fixedLocation) body.addEventListener('change', () => { if (go.hidden && !busy) { showMessage(''); go.hidden = false; replace.hidden = true; } });
       body.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target.tagName === 'INPUT' && (event.target.type === 'text' || event.target.type === 'radio')) { event.preventDefault(); if (!busy) (go.hidden ? run(true) : run(false)); } });
       cancel.addEventListener('click', () => finish(null));
       close.addEventListener('click', () => finish(null));

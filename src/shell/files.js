@@ -450,7 +450,11 @@ globalThis.EdukorsLoading = (() => {
       try {
         const bytes = app().draftBytes ? await app().draftBytes(doc) : (await app().toBytes(doc, { name: doc.name || EdukorsDocuments.nameOf(doc), draft: true })).bytes;
         const result = await desktop.drafts.write({ key: entry.key, bytes, name: doc.name || EdukorsDocuments.nameOf(doc), path: doc.path || '' });
-        if (!result?.error && drafts.get(doc.id) === entry) entry.written = true;
+        if (!result?.error && drafts.get(doc.id) === entry) {
+          entry.written = true;
+          // Saved or closed while the draft was being written: the draft is stale, remove it now.
+          if (!EdukorsDocuments.list().includes(doc) || !EdukorsDocuments.isModified(doc)) { entry.written = false; desktop.drafts.remove(entry.key).catch(() => {}); }
+        } else if (!result?.error) desktop.drafts.remove(entry.key).catch(() => {});
       } catch { /* a draft is a safety net: the next change tries again */ }
     }, delay);
   }
