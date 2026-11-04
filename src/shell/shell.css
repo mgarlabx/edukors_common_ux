@@ -783,10 +783,11 @@ small.ai-account-meta { display: inline; }
 .ai-composer .ai-attach[aria-expanded="true"] { background: var(--workspace); }
 
 /* ---------- Loading indicator (EdukorsLoading, src/shell/files.js) ----------
-   While a file is read and opened: a card in the middle of the window with a spinner and the file's name. It does not
-   block the window. The spinner is a CSS animation, so it keeps turning while the page converts the file. */
+   While a file is opened, saved or exported: a card in the middle of the window with a spinner and the file's name. It
+   does not block the window and, as a popover, shows above an open dialog. The spinner is a CSS animation, so it keeps
+   turning while the page converts the file. */
 .loading-indicator {
-  position: fixed; left: 50%; top: 50%; z-index: 1000; transform: translate(-50%, -50%);
+  position: fixed; inset: auto; margin: 0; left: 50%; top: 50%; z-index: 1000; transform: translate(-50%, -50%); overflow: visible;
   display: flex; align-items: center; gap: 12px; max-width: min(440px, calc(100vw - 32px));
   padding: 14px 20px; border: 1px solid var(--border); border-radius: 12px;
   background: var(--surface); color: var(--text, #263149); box-shadow: 0 8px 28px #17213b29;

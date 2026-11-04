@@ -6,33 +6,41 @@
 // memory: no file is written, no folder is opened.
 // To see the other states in the simulation, save the document with the name "existing" (Save asks to replace) or
 // "error" (Save fails; a document saved as "error" also fails to export, to show that screen).
-// EdukorsLoading.begin(name) shows an animated "Opening …" indicator and returns the function that ends it. Several may
-// run at once; the indicator stays while any is active and names the latest. It appears only after a short moment, so
-// a small file opens without a flash. Apps call it for their own long loads (for example a conversion of their own).
+// EdukorsLoading.begin(name, kind) shows an animated "Opening …" indicator ("Saving …" or "Exporting …" with kind
+// 'saving' or 'exporting') and returns the function that ends it. Several may run at once; the indicator stays while
+// any is active and names the latest. It appears only after a short moment, so a small file opens or saves without a
+// flash. It sits in the top layer, above an open Save or Export screen. Apps call it for their own long loads (for
+// example a conversion of their own).
 globalThis.EdukorsLoading = (() => {
   const active = [];
   let node = null, timer = null;
   const label = () => {
     const messages = (EdukorsLanguages[document.documentElement.lang] || EdukorsLanguages.en).messages;
     const t = key => messages[key] || EdukorsLanguages.en.messages[key];
-    const name = active.at(-1)?.name;
-    return name ? t('openingFile').replace('{name}', name) : t('opening');
+    const { name, kind } = active.at(-1) || {};
+    const key = kind === 'saving' ? 'saving' : kind === 'exporting' ? 'exporting' : 'opening';
+    return name ? t(key + 'File').replace('{name}', name) : t(key);
   };
+  // A manual popover is in the top layer, so it shows above modal dialogs (shown again to come above a newer one).
+  const popover = () => typeof node?.showPopover === 'function';
+  const show = () => { node.hidden = false; if (popover()) { if (node.matches(':popover-open')) node.hidePopover(); node.showPopover(); } };
+  const hide = () => { if (popover() && node.matches(':popover-open')) node.hidePopover(); node.hidden = true; };
   function render() {
-    if (!active.length) { clearTimeout(timer); timer = null; if (node) node.hidden = true; return; }
+    if (!active.length) { clearTimeout(timer); timer = null; if (node) hide(); return; }
     if (!node) {
       node = document.createElement('div');
       node.className = 'loading-indicator';
       node.setAttribute('role', 'status');
+      node.setAttribute('popover', 'manual');
       node.hidden = true;
       node.innerHTML = '<span class="loading-spinner" aria-hidden="true"></span><span class="loading-text"></span>';
       document.body.append(node);
     }
     node.querySelector('.loading-text').textContent = label();
-    if (node.hidden && !timer) timer = setTimeout(() => { timer = null; if (active.length) node.hidden = false; }, 150);
+    if (node.hidden && !timer) timer = setTimeout(() => { timer = null; if (active.length) show(); }, 150);
   }
-  function begin(name) {
-    const entry = { name: typeof name === 'string' ? name : '' };
+  function begin(name, kind = 'opening') {
+    const entry = { name: typeof name === 'string' ? name : '', kind };
     active.push(entry);
     render();
     let ended = false;
@@ -72,6 +80,7 @@ globalThis.EdukorsLoading = (() => {
     async save(doc, { name, folder, replace, check = false }) {
       const base = withoutExtension(name, extension());
       EdukorsDocuments.setSaving(doc, true);
+      const endIndicator = EdukorsLoading.begin(base + extension(), 'saving');
       try {
         // The conversations as written: changes made while the file is written stay unsaved.
         const signature = EdukorsAiAssistant.signature(doc);
@@ -88,9 +97,13 @@ globalThis.EdukorsLoading = (() => {
         EdukorsAiAssistant.documentSaved(doc);
         EdukorsDocuments.refresh();
         return {};
-      } finally { EdukorsDocuments.setSaving(doc, false); }
+      } finally { endIndicator(); EdukorsDocuments.setSaving(doc, false); }
     },
     async export(doc, { name, folder, format, replace, progress }) {
+      const endIndicator = EdukorsLoading.begin(`${name}.${format}`, 'exporting');
+      try { return await this.exportNow(doc, { name, folder, format, replace, progress }); } finally { endIndicator(); }
+    },
+    async exportNow(doc, { name, folder, format, replace, progress }) {
       progress(10);
       // exportFile({ doc, format, title }) → { html, width, height } or { data }; apps with only a page give exportPage.
       const out = app().exportFile ? await app().exportFile({ doc, format, title: name }) : await app().exportPage({ title: name });
@@ -108,8 +121,9 @@ globalThis.EdukorsLoading = (() => {
   let simulatedRecent = [];
   const simulatedHost = {
     async save(doc, { name, folder, replace }) {
-      await wait(450);
       const base = withoutExtension(name, extension());
+      const endIndicator = EdukorsLoading.begin(base + extension(), 'saving');
+      try { await wait(450); } finally { endIndicator(); }
       if (base.toLowerCase() === 'existing' && !replace && doc.file !== `${base}${extension()}`) return { exists: true };
       if (base.toLowerCase() === 'error') return { error: t('demoSaveError') };
       Object.assign(doc, { saved: true, name: base, folder, file: `${base}${extension()}` });
@@ -124,7 +138,8 @@ globalThis.EdukorsLoading = (() => {
       // `existing` shows the question.
       const ext = `.${format}`, base = withoutExtension(name, ext);
       if (base.toLowerCase() === 'existing' && !replace) { await wait(200); return { exists: true }; }
-      for (let step = 1; step <= 10; step++) { await wait(90); progress(step * 10); }
+      const endIndicator = EdukorsLoading.begin(base + ext, 'exporting');
+      try { for (let step = 1; step <= 10; step++) { await wait(90); progress(step * 10); } } finally { endIndicator(); }
       if (base.toLowerCase() === 'error') return { error: t('demoExportError') };
       doc.lastExport = `${folder}/${base}${ext}`;
       return {};
@@ -150,6 +165,7 @@ globalThis.EdukorsLoading = (() => {
       doc.originConfirmed = true;
     }
     EdukorsDocuments.setSaving(doc, true);
+    const endIndicator = EdukorsLoading.begin(doc.file, 'saving');
     try {
       const signature = EdukorsAiAssistant.signature(doc);
       const out = await app().exportFile({ doc, format: doc.originFormat, title: doc.name });
@@ -170,7 +186,7 @@ globalThis.EdukorsLoading = (() => {
     } catch (error) {
       Dialogs.toast({ t, message: fileMessage('saveFailed', { name: doc.file, reason: error.message }) });
       return false;
-    } finally { EdukorsDocuments.setSaving(doc, false); }
+    } finally { endIndicator(); EdukorsDocuments.setSaving(doc, false); }
   }
 
   async function save({ as = false, doc = EdukorsDocuments.active() } = {}) {
