@@ -1,7 +1,8 @@
 // The desktop app's menu (desktop/main.mjs builds it on macOS only; Windows and Linux have no menu bar).
 // The page gives the menu its labels in the interface language and runs its commands with the same code as the toolbar.
 // Edit commands go to a text field when one has the focus (its native undo, delete, select all) and to the document
-// otherwise. Close Tab closes the active document, or the window when none is open; Windows and Linux get Ctrl+W here.
+// otherwise. Close Tab closes the active document, or the window when none is open. Windows and Linux get the same
+// shortcuts with Ctrl here (Close Tab, Settings, Undo, Redo, Select All).
 // In a browser this file does nothing.
 (() => {
   const menu = globalThis.EdukorsDesktop?.menu;
@@ -44,11 +45,18 @@
   };
   menu.onCommand(name => commands[name]?.());
 
-  // Windows and Linux have no menu, so Ctrl+W is handled here (Ctrl+Shift+W is left alone).
+  // Windows and Linux have no menu, so its shortcuts are handled here: Ctrl+W (Close Tab; Ctrl+Shift+W is left alone),
+  // Ctrl+, (Settings), and, outside text fields, which keep their native behavior, Ctrl+Z (Undo), Ctrl+Shift+Z or
+  // Ctrl+Y (Redo) and Ctrl+A (Select All), as the macOS menu does. A key the app has already handled is left alone.
   if (!EdukorsPlatform.mac) document.addEventListener('keydown', event => {
-    if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey || event.key.toLowerCase() !== 'w') return;
+    if (!event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented) return;
+    const key = event.key.toLowerCase();
+    const keys = event.shiftKey ? { z: 'redo' } : { w: 'closeTab', ',': 'settings', z: 'undo', y: 'redo', a: 'selectAll' };
+    const name = Object.hasOwn(keys, key) ? keys[key] : '';
+    if (!name) return;
+    if (name !== 'closeTab' && name !== 'settings' && (typing() || document.querySelector('dialog[open]') || EdukorsContextMenu.isOpen())) return;
     event.preventDefault();
-    closeTab();
+    commands[name]();
   });
 
   sendLabels();

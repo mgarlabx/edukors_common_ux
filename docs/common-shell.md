@@ -41,7 +41,7 @@ Transcribed from the original menu notes (since deleted; this transcription is c
 - Window: contents to be defined.
 - Help: Quick guide, Full guide, Terms of use (a tabbed modal sheet, as in Slides; the website is reached through the toolbar logo).
 
-Semicolons indicate the separator groups in the source notes. Decided 2026-11-02: no full menu. macOS gets a minimal application menu (app menu, Edit, Window; see [AI assistant](ai.md#electron-host), "Menu"), because Electron's default would close the window on Cmd+W and text fields need the Edit menu for their shortcuts; Windows and Linux get no menu bar. The toolbar holds File and Insert. Import is a toolbar command (see the README, "Save, Open, Export, and Show in folder").
+Semicolons indicate the separator groups in the source notes. Decided 2026-11-02: no full menu. macOS gets a minimal application menu (app menu, Edit, Window; see [AI assistant](ai.md#electron-host), "Menu"), because Electron's default would close the window on Cmd+W and text fields need the Edit menu for their shortcuts; Windows and Linux get no menu bar; the page gives them the menu's shortcuts with Ctrl instead (`src/shell/desktop-menu.js`: Ctrl+W, Ctrl+,, and, outside text fields, Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, Ctrl+A). The toolbar holds File and Insert. Import is a toolbar command (see the README, "Save, Open, Export, and Show in folder").
 
 ## Toolbar inventory
 
